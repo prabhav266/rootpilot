@@ -11,7 +11,7 @@ from routes.webhooks import router as webhook_router
 Base.metadata.create_all(bind=engine)
 
 
-app = FastAPI()
+app = FastAPI() #fun
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
