@@ -10,68 +10,127 @@ interface Event {
   summary?: string
 }
 
-export default function EventList(){
-    const [events, setEvents] = useState<Event[]>([])
+export default function EventList() {
 
-    useEffect(()=> {
-        async function fetchEvents(){
-            const res = await fetch(
-                "http://127.0.0.1:8000/events"
-            )
-            const data = await res.json()
+  const [events, setEvents] = useState<Event[]>([])
 
-const summarizedEvents = await Promise.all(
+  useEffect(() => {
 
-  data.map(async (event: Event) => {
+    async function fetchEvents() {//tyt
 
-    const aiRes = await fetch(
-      "http://127.0.0.1:8000/ai/summarize",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(event),
-      }
+      const res = await fetch(
+        "http://127.0.0.1:8000/events"
+      )
+
+      const data = await res.json()
+
+      const summarizedEvents = await Promise.all(
+
+        data.map(async (event: Event) => {
+
+          const aiRes = await fetch(
+            "http://127.0.0.1:8000/ai/summarize",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(event),
+            }
+          )
+
+          const aiData = await aiRes.json()
+
+          return {
+            ...event,
+            summary: aiData.summary,
+          }
+
+        })
+
+      )
+
+      setEvents(summarizedEvents)
+    }
+
+    fetchEvents()
+
+    const socket = new WebSocket(
+      "ws://127.0.0.1:8000/ws"
     )
 
-    const aiData = await aiRes.json()
-
-    return {
-      ...event,
-      summary: aiData.summary,
+    socket.onopen = () => {
+        console.log("WebSocket Connected")
     }
-  })
 
-)
+    socket.onerror = (error) => {
+        console.log("WebSocket Error:", error)
+    }
 
-setEvents(summarizedEvents)
-        }
-        fetchEvents()
-    }, [])
-    return(
-        <div className="mt-10 w-full max-w-2xl">
+    socket.onmessage = (event) => {
 
-      <h2 className="text-2xl font-bold text-black mb-4">
-        Recent Events
+      console.log(
+        "Live Event:",
+        event.data
+      )
+
+      fetchEvents()
+    }
+
+    return () => {
+      socket.close()
+    }
+
+  }, [])
+
+  return (
+
+    <div className="mt-8 w-full max-w-4xl">
+
+      <h2 className="text-3xl font-bold text-black mb-6">
+        Live DevOps Events
       </h2>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
 
         {events.map((event) => (
 
           <div
             key={event.id}
-            className="border p-4 rounded-lg shadow"
+            className="border p-4 rounded-lg shadow bg-white"
           >
 
             <h3 className="text-lg font-semibold text-black">
-                {event.summary || event.event_type}
+
+              {event.summary || event.event_type}
+
             </h3>
 
-            <p className="text-gray-600">
-                {event.repository_name}
+            <p className="text-gray-600 mt-1">
+
+              {event.repository_name}
+
             </p>
+
+            <details className="mt-3">
+
+              <summary className="cursor-pointer text-blue-500">
+
+                View Payload
+
+              </summary>
+
+              <pre className="text-xs overflow-auto mt-2 bg-gray-100 p-2 rounded">
+
+                {JSON.stringify(
+                  JSON.parse(event.payload),
+                  null,
+                  2
+                )}
+
+              </pre>
+
+            </details>
 
           </div>
 
@@ -80,5 +139,5 @@ setEvents(summarizedEvents)
       </div>
 
     </div>
-    )
+  )
 }
