@@ -44,4 +44,4 @@ def get_events():
 
     events = db.query(Event).all()
 
-    return events
+    return events  #uiuiui
