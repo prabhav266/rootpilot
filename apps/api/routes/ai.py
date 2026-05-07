@@ -1,31 +1,52 @@
 from fastapi import APIRouter
-from openai import OpenAI
+import google.generativeai as genai
 
-from config import OPENAI_API_KEY
+from config import GEMINI_API_KEY
 
 router = APIRouter()
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
+
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 @router.post("/ai/summarize")
 def summarize_event(event: dict):
 
-    prompt = f"""
-    Summarize this GitHub event in simple English:
+    try:
 
-    {event}
-    """
+        prompt = f"""
+        Summarize this GitHub event in simple English:
 
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
+        {event}
+        """
+
+        response = model.generate_content(prompt)
+
+        summary = response.text
+
+    except Exception:
+
+        event_type = event.get("event_type")
+        repository_name = event.get("repository_name")
+
+        if event_type == "push":
+            summary = (
+                f"Code was pushed to "
+                f"{repository_name}"
+            )
+
+        elif event_type == "ping":
+            summary = (
+                f"Webhook connected successfully "
+                f"to {repository_name}"
+            )
+
+        else:
+            summary = (
+                f"{event_type} event occurred "
+                f"in {repository_name}"
+            )
 
     return {
-        "summary": response.choices[0].message.content
+        "summary": summary
     }
