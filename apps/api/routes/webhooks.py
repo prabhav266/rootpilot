@@ -35,3 +35,13 @@ async def github_webhook(request: Request):
     return {
         "message": "Webhook received"
     }
+
+
+@router.get("/events")
+def get_events():
+
+    db: Session = SessionLocal()
+
+    events = db.query(Event).all()
+
+    return events

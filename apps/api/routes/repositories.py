@@ -7,7 +7,7 @@ from models.repository import Repository
 router = APIRouter()
 
 @router.post("/repositories/connect")
-def connect_repository(repo: dict):
+def connect_repository(repo: dict): #moj
 
     db: Session = SessionLocal()
 
