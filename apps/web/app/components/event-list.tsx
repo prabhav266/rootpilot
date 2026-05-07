@@ -6,6 +6,7 @@ interface Event {
   id: number
   event_type: string
   repository_name: string
+  payload: string
   summary?: string
 }
 
