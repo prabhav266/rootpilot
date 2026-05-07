@@ -49,6 +49,8 @@ def summarize_event(event: dict):
             )
 
         elif event_type == "workflow_run":
+            
+            print(event)
 
             workflow = event.get("workflow", {})
             conclusion = event.get("conclusion")
