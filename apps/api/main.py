@@ -8,6 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from models.event import Event
 from routes.webhooks import router as webhook_router
 from routes.ai import router as ai_router
+from routes.ci_debug import router as ci_debug_router
+from routes.websocket_route import (
+    router as websocket_router
+)
 
 Base.metadata.create_all(bind=engine)
 
@@ -25,6 +29,8 @@ app.include_router(health_router)
 app.include_router(repo_router)
 app.include_router(webhook_router)
 app.include_router(ai_router)
+app.include_router(ci_debug_router)
+app.include_router(websocket_router)
 
 @app.get("/")
 def root():

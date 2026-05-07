@@ -4,6 +4,7 @@ import json
 
 from database import SessionLocal
 from models.event import Event
+from websocket_manager import manager
 
 router = APIRouter()
 
@@ -29,6 +30,10 @@ async def github_webhook(request: Request):
 
     db.add(new_event)
     db.commit()
+    
+    await manager.broadcast(
+        f"{event_type} event in {repository_name}"
+    )
 
     print(f"Received GitHub Event: {event_type}")
 
