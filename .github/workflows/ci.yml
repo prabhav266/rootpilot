@@ -26,6 +26,6 @@ jobs:
           cd apps/api
           pip install -r requirements.txt
 
-      - name: Run Simple Test
+      - name: Run Failing Test
         run: |
-          echo "RootPilot CI/CD Pipeline Running"
+          fake-command-that-does-not-exist
