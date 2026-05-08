@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import AnalyticsDashboard from "./analytics-dashboard"
 
 interface Event {
   id: number
@@ -86,6 +87,8 @@ export default function EventList() {
   return (
 
     <div className="mt-8 w-full max-w-4xl">
+
+        <AnalyticsDashboard events={events} />
 
       <h2 className="text-3xl font-bold text-black mb-6">
         Live DevOps Events
