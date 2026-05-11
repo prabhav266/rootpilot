@@ -1,170 +1,177 @@
 "use client"
 
-import{
-    PieChart,
-    Pie,
-    Cell,
-    Tooltip,
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    CartesianGrid
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
 } from "recharts"
 
-interface Event{
-    id: number
-    event_type : string
-    repository_name: string
+interface Event {
+  id: number
+  event_type: string
+  repository_name: string
 }
 
 export default function AnalyticsDashboard({
-    events,
-}:{
-    events: Event[]
-}){
-    const totalEvents = events.length
+  events,
+}: {
+  events: Event[]
+}) {
+  const totalEvents = events.length
 
-    const workflowFailures = events.filter(
-        (event) =>
-            event.event_type === "workflow_run"
-    ).length
+  const workflowFailures = events.filter(
+    (event) => event.event_type === "workflow_run"
+  ).length
 
-    const pushEvents = events.filter(
-        (event) => 
-            event.event_type === "push"
-    ).length
+  const pushEvents = events.filter(
+    (event) => event.event_type === "push"
+  ).length
 
-    const eventCounts: Record<string, number> = {}
+  const eventCounts: Record<string, number> = {}
 
-    events.forEach((event)=> {
-        if(!eventCounts[event.event_type]){
-            eventCounts[event.event_type] = 0
-        }
+  events.forEach((event) => {
+    if (!eventCounts[event.event_type]) {
+      eventCounts[event.event_type] = 0
+    }
 
-        eventCounts[event.event_type] += 1
+    eventCounts[event.event_type] += 1
+  })
+
+  const chartData = Object.entries(eventCounts).map(
+    ([name, value]) => ({
+      name,
+      value,
     })
+  )
 
-    const chartData = Object.entries(
-        eventCounts
-    ).map(([name, value]) => ({
-        name,
-        value,
-    }))
+  const COLORS = [
+    "#8884d8",
+    "#82ca9d",
+    "#ffc658",
+    "#ff7f7f",
+    "#8dd1e1",
+  ]
 
-    return(
-        <div className="w-full max-w-6xl mb-10">
+  return (
+    
+    <div className="w-full space-y-8">
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-        <div className="bg-white shadow rounded-xl p-6">
-
-          <h3 className="text-gray-500">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <h3 className="text-zinc-400 text-sm">
             Total Events
           </h3>
 
-          <p className="text-3xl font-bold text-black mt-2">
+          <p className="text-4xl font-bold text-white mt-2">
             {totalEvents}
           </p>
-
         </div>
 
-        <div className="bg-white shadow rounded-xl p-6">
-
-          <h3 className="text-gray-500">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <h3 className="text-zinc-400 text-sm">
             Workflow Events
           </h3>
 
-          <p className="text-3xl font-bold text-black mt-2">
+          <p className="text-4xl font-bold text-white mt-2">
             {workflowFailures}
           </p>
-
         </div>
 
-        <div className="bg-white shadow rounded-xl p-6">
-
-          <h3 className="text-gray-500">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <h3 className="text-zinc-400 text-sm">
             Push Events
           </h3>
 
-          <p className="text-3xl font-bold text-black mt-2">
+          <p className="text-4xl font-bold text-white mt-2">
             {pushEvents}
           </p>
-
         </div>
 
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
-        <div className="bg-white p-6 rounded-xl shadow">
-
-          <h3 className="text-xl font-bold text-black mb-4">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <h3 className="text-xl font-semibold text-white mb-6">
             Event Distribution
           </h3>
 
-          <PieChart width={350} height={300}>
+          <div className="flex justify-center">
 
-            <Pie
-              data={chartData}
-              dataKey="value"
-              nameKey="name"
-              outerRadius={100}
-              fill="#8884d8"
-              label
-            >
+            <PieChart width={400} height={300}>
 
-              {chartData.map((_, index) => (
+                <Pie
+                  data={chartData}
+                  dataKey="value"
+                  nameKey="name"
+                  outerRadius={110}
+                  label
+                >
+                  {chartData.map((_, index) => (
+                    <Cell
+                      key={index}
+                      fill={COLORS[index % COLORS.length]}
+                    />
+                  ))}
+                </Pie>
 
-                <Cell
-                  key={index}
-                  fill={[
-                    "#8884d8",
-                    "#82ca9d",
-                    "#ffc658",
-                    "#ff7f7f",
-                    "#8dd1e1",
-                  ][index % 5]}
-                />
+                <Tooltip />
 
-              ))}
+              </PieChart>
 
-            </Pie>
-
-            <Tooltip />
-
-          </PieChart>
-
+          </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow">
-
-          <h3 className="text-xl font-bold text-black mb-4">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <h3 className="text-xl font-semibold text-white mb-6">
             Event Counts
           </h3>
 
-          <BarChart
-            width={400}
-            height={300}
-            data={chartData}
-          >
+          <div className="flex justify-center">
 
-            <CartesianGrid strokeDasharray="3 3" />
+            <BarChart
+              width={500}
+              height={300}
+              data={chartData}
+            >
 
-            <XAxis dataKey="name" />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#27272a"
+                />
 
-            <YAxis />
+                <XAxis
+                  dataKey="name"
+                  stroke="#a1a1aa"
+                />
 
-            <Tooltip />
+                <YAxis
+                  stroke="#a1a1aa"
+                />
 
-            <Bar dataKey="value" fill="#8884d8" />
+                <Tooltip />
 
-          </BarChart>
+                <Bar
+                  dataKey="value"
+                  fill="#8884d8"
+                  radius={[8, 8, 0, 0]}
+                />
 
+              </BarChart>
+
+          </div>
         </div>
 
       </div>
 
     </div>
-    )
+  )
 }

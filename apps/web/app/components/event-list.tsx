@@ -1,7 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import AnalyticsDashboard from "./analytics-dashboard"
+import { motion } from "framer-motion"
 
 interface Event {
   id: number
@@ -11,135 +10,84 @@ interface Event {
   summary?: string
 }
 
-export default function EventList() {
-
-  const [events, setEvents] = useState<Event[]>([])
-
-  useEffect(() => {
-
-    async function fetchEvents() {//tyt
-
-      const res = await fetch(
-        "http://127.0.0.1:8000/events"
-      )
-
-      const data = await res.json()
-
-      const summarizedEvents = await Promise.all(
-
-        data.map(async (event: Event) => {
-
-          const aiRes = await fetch(
-            "http://127.0.0.1:8000/ai/summarize",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify(event),
-            }
-          )
-
-          const aiData = await aiRes.json()
-
-          return {
-            ...event,
-            summary: aiData.summary,
-          }
-
-        })
-
-      )
-
-      setEvents(summarizedEvents)
-    }
-
-    fetchEvents()
-
-    const socket = new WebSocket(
-      "ws://127.0.0.1:8000/ws"
-    )
-
-    socket.onopen = () => {
-        console.log("WebSocket Connected")
-    }
-
-    socket.onerror = (error) => {
-        console.log("WebSocket Error:", error)
-    }
-
-    socket.onmessage = (event) => {
-
-      console.log(
-        "Live Event:",
-        event.data
-      )
-
-      fetchEvents()
-    }
-
-    return () => {
-      socket.close()
-    }
-
-  }, [])
-
+export default function EventList({
+  events,
+}: {
+  events: Event[]
+}) {
   return (
+    <div className="space-y-6">
 
-    <div className="mt-8 w-full max-w-4xl">
+      <div className="flex items-center justify-between mb-6">
 
-        <AnalyticsDashboard events={events} />
+        <div>
+          <h2 className="text-2xl font-bold text-white">
+            Live Activity
+          </h2>
 
-      <h2 className="text-3xl font-bold text-black mb-6">
-        Live DevOps Events
-      </h2>
+          <p className="text-zinc-500 text-sm mt-1">
+            Realtime GitHub repository events
+          </p>
+        </div>
 
-      <div className="space-y-4">
+        <div className="flex items-center gap-2">
 
-        {events.map((event) => (
+          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
 
-          <div
-            key={event.id}
-            className="border p-4 rounded-lg shadow bg-white"
-          >
+          <span className="text-green-400 text-sm">
+            Live Feed
+          </span>
 
-            <h3 className="text-lg font-semibold text-black">
+        </div>
 
-              {event.summary || event.event_type}
+      </div>
 
-            </h3>
+      {events.map((event) => (
 
-            <p className="text-gray-600 mt-1">
+        <motion.div
+          key={event.id}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          whileHover={{ scale: 1.01 }}
+          className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-700 transition-all duration-300"
+        >
 
-              {event.repository_name}
+          <div className="flex items-center justify-between mb-3">
 
-            </p>
+            <span className="px-3 py-1 text-xs rounded-full bg-blue-500/20 text-blue-400">
+              {event.event_type}
+            </span>
 
-            <details className="mt-3">
-
-              <summary className="cursor-pointer text-blue-500">
-
-                View Payload
-
-              </summary>
-
-              <pre className="text-xs overflow-auto mt-2 bg-gray-100 p-2 rounded">
-
-                {JSON.stringify(
-                  JSON.parse(event.payload),
-                  null,
-                  2
-                )}
-
-              </pre>
-
-            </details>
+            <span className="text-zinc-500 text-sm">
+              Event #{event.id}
+            </span>
 
           </div>
 
-        ))}
+          <h3 className="text-white text-lg font-semibold mb-2">
+            {event.repository_name}
+          </h3>
 
-      </div>
+          <p className="text-zinc-300 mb-3">
+            {event.summary || "No AI summary available"}
+          </p>
+
+          <details className="text-zinc-500 text-sm">
+
+            <summary className="cursor-pointer">
+              Raw Payload
+            </summary>
+
+            <pre className="mt-2 whitespace-pre-wrap break-all text-xs">
+              {event.payload}
+            </pre>
+
+          </details>
+
+        </motion.div>
+
+      ))}
 
     </div>
   )

@@ -38,49 +38,46 @@ export default function RepoList() {
         Your Repositories
       </h2>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         {repos.map((repo) => (
           <div
-            key={repo.id}
-            className="border p-4 rounded-lg shadow"
-          >
-            <h3 className="text-lg font-semibold text-black">
-              {repo.name}
-            </h3>
+  key={repo.id}
+  className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-700 transition-all"
+>
+  <div className="flex items-start justify-between mb-4">
 
-            <a
-              href={repo.html_url}
-              target="_blank"
-              className="text-blue-500 block"
-            >
-              View Repository
-            </a>
+    <div>
+      <h3 className="text-white text-lg font-semibold">
+        {repo.name}
+      </h3>
 
-            <button
-              onClick={async () => {
-                const res = await fetch(
-                  "http://127.0.0.1:8000/repositories/connect",
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                      repo_name: repo.name,
-                      github_repo_id: repo.id,
-                      repo_url: repo.html_url,
-                    }),
-                  }
-                )
+      <p className="text-zinc-500 text-sm mt-1">
+        GitHub Repository
+      </p>
+    </div>
 
-                const data = await res.json()
-                console.log(data)
-              }}
-              className="mt-3 bg-blue-600 text-white px-4 py-2 rounded-lg"
-            >
-              Connect Repository
-            </button>
-          </div>
+    <div className="w-3 h-3 rounded-full bg-green-500 mt-2" />
+
+  </div>
+
+  <div className="flex items-center gap-3 mt-4">
+
+    <a
+      href={repo.html_url}
+      target="_blank"
+      className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-sm transition-all"
+    >
+      View Repo
+    </a>
+
+    <button
+      className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm transition-all"
+    >
+      Connect
+    </button>
+
+  </div>
+</div>
         ))}
       </div>
     </div>
