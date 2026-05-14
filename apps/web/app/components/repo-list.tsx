@@ -49,11 +49,37 @@ export default function RepoList() {
   const [copied, setCopied] = useState(false)
 
   const fetchConnected = async () => {
-    try {
-      const res = await fetch(`${API}/repositories`)
-      if (res.ok) setConnected(await res.json())
-    } catch {}
+  try {
+
+    const res = await fetch(`${API}/events`)
+
+    if (!res.ok) return
+
+    const data = await res.json()
+
+    const uniqueRepos = Array.from(
+      new Map(
+        data.map((event: any) => [
+          event.repository_name,
+          {
+            id: event.id,
+            repo_name: event.repository_name,
+            github_repo_id: String(event.id),
+            repo_url: `https://github.com/${event.repository_name}`,
+            connected_at: new Date().toISOString(),
+          },
+        ])
+      ).values()
+    )
+
+    setConnected(uniqueRepos as ConnectedRepo[])
+
+  } catch (err) {
+
+    console.error(err)
+
   }
+}
 
   useEffect(() => {
     if (!session?.accessToken) return
