@@ -1,12 +1,19 @@
 from fastapi import APIRouter
 import requests
 import google.generativeai as genai
+import os
 
 from config import GEMINI_API_KEY
 
 router = APIRouter()
 
-genai.configure(api_key=GEMINI_API_KEY)
+genai.configure(
+    api_key=os.getenv("GEMINI_API_KEY")
+)
+
+model = genai.GenerativeModel(
+    "gemini-1.5-flash"
+)
 
 
 
