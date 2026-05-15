@@ -16,22 +16,27 @@ def analyze_ci(data: dict):
     jobs_url = data.get("jobs_url")
     github_token = data.get("github_token")
 
-    headers = {
-        "Authorization": f"Bearer {github_token}"
-    }
-
     if not jobs_url:
 
         return {
             "summary": "No CI workflow job data available.",
-            "likely_cause": "This event is not a GitHub Actions workflow failure.",
+            "likely_cause": (
+                "This event does not contain GitHub Actions "
+                "workflow job metadata."
+            ),
             "actions": [
-                "Run Diagnose on failed CI/CD workflow events only"
+                "Run diagnosis only on failed workflow events"
             ],
             "prevention": [
-                "Filter diagnose option to workflow failures"
+                "Filter diagnose option to workflow failures only"
             ]
         }
+
+    headers = {}
+
+    if github_token:
+
+        headers["Authorization"] = f"Bearer {github_token}"
 
     response = requests.get(
         jobs_url,
@@ -45,7 +50,17 @@ def analyze_ci(data: dict):
     if not jobs:
 
         return {
-            "analysis": "No CI jobs found."
+            "summary": "No CI jobs found.",
+            "likely_cause": (
+                "Workflow job list could not be retrieved."
+            ),
+            "actions": [
+                "Verify GitHub workflow permissions",
+                "Check workflow run availability"
+            ],
+            "prevention": [
+                "Ensure workflow jobs are accessible"
+            ]
         }
 
     failed_steps = []
@@ -64,39 +79,65 @@ def analyze_ci(data: dict):
     if not failed_steps:
 
         return {
-            "analysis": "No failed CI steps detected."
+            "summary": "No failed CI steps detected.",
+            "likely_cause": (
+                "Workflow appears stable."
+            ),
+            "actions": [
+                "Continue monitoring CI stability"
+            ],
+            "prevention": [
+                "Maintain automated testing coverage"
+            ]
         }
 
     prompt = f"""
     You are an AI DevOps assistant.
 
-    Analyze these failed CI steps and explain:
+    Analyze these failed CI workflow steps.
+
+    Explain:
     - what failed
-    - likely cause
-    - possible fix
+    - likely root cause
+    - recommended fixes
+    - prevention strategies
 
     Failed Steps:
 
     {failed_steps}
     """
 
-    response = client.models.generate_content(
-       model="gemini-2.5-flash-lite",
-        contents=prompt,
-    )
+    try:
+
+        ai_response = client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=prompt
+        )
+
+        summary = ai_response.text
+
+    except Exception as e:
+
+        summary = (
+            "CI workflow failure detected. "
+            "Possible causes include failing tests, dependency issues, "
+            "environment configuration problems, or build instability."
+        )   
 
     return {
-    "summary": response.text,
-    "likely_cause": "GitHub Actions workflow failure detected.",
-    "actions": [
-        "Review failed workflow logs",
-        "Inspect failing CI step",
-        "Re-run workflow after fixes"
-    ],
-    "prevention": [
-        "Add automated testing",
-        "Improve CI validation",
-        "Monitor workflow stability"
-    ],
-    "failed_steps": failed_steps
-}
+        "summary": summary,
+        "likely_cause": (
+             "Automated workflow execution encountered one or more failing steps. "
+        ),
+        "actions": [
+            "Inspect failed GitHub Actions logs. ",
+            "Review recent commits. ",
+            "Verify dependency and environment configuration. "
+        ],
+        "prevention": [
+            "Add automated testing. ",
+            "Improve CI validation coverage. ",
+            "Monitor workflow health continuously. "
+        ],
+        "failed_steps": failed_steps
+    }
