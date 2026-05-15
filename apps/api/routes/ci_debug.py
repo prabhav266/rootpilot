@@ -130,9 +130,24 @@ def analyze_ci(data: dict):
              "Automated workflow execution encountered one or more failing steps. "
         ),
         "actions": [
-            "Inspect failed GitHub Actions logs. ",
-            "Review recent commits. ",
-            "Verify dependency and environment configuration. "
+            {
+                "step": "1",
+                "title": "Inspect GitHub Actions Logs",
+                "detail": "Review failing workflow logs to identify the exact CI failure point.",
+                "command": "gh run view"
+            },
+            {
+                "step": "2",
+                "title": "Review Recent Commits",
+                "detail": "Check recent commits for breaking changes or dependency conflicts.",
+                "command": "git log --oneline"
+            },
+            {
+                "step": "3",
+                "title": "Verify Environment Configuration",
+                "detail": "Ensure dependencies and environment variables are configured correctly.",
+                "command": "npm install"
+            }
         ],
         "prevention": [
             "Add automated testing. ",
