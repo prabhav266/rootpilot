@@ -21,12 +21,18 @@ async def github_webhook(request: Request):
     ).get("full_name")
 
     db: Session = SessionLocal()
+    
+    jobs_url = (
+    payload.get("workflow_run", {})
+    .get("jobs_url")
+    )
 
     new_event = Event(
         event_type=event_type,
         repository_name=repository_name,
+        jobs_url=jobs_url,
         payload=json.dumps(payload)
-    )
+    )   
 
     db.add(new_event)
     db.commit()

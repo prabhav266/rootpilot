@@ -1,14 +1,14 @@
 from fastapi import APIRouter
-import google.generativeai as genai
+from google import genai
+import os
 import json
 
-from config import GEMINI_API_KEY
 
 router = APIRouter()
 
-genai.configure(api_key=GEMINI_API_KEY)
-
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY")
+)
 
 
 @router.post("/ai/summarize")
@@ -113,8 +113,9 @@ def summarize_event(event: dict):
             {payload}
             """
 
-            response = model.generate_content(
-                prompt
+            response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt,
             )
 
             summary = response.text
@@ -207,13 +208,17 @@ Requirements:
 
     try:
 
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=prompt,
+        )
 
         insight = response.text.strip()
 
+
     except Exception as e:
 
-        insight = f"AI analysis unavailable: {str(e)}"
+        insight = f"REAL ERROR: {str(e)}"
 
     return {
         "health": health,

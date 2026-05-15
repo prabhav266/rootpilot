@@ -141,19 +141,20 @@ export default function EventList() {
   }, [])
 
   const diagnose = async (event: Event) => {
-    if (diagnoses[event.id]) {
+    if (false && diagnoses[event.id]) {
       setExpandedId(expandedId === event.id ? null : event.id)
       return
     }
     setDiagnosing(event.id)
     setExpandedId(event.id)
     try {
-      const res = await fetch(`${API}/ai/diagnose`, {
+      const res = await fetch(`${API}/ci/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(event),
       })
       const data = await res.json()
+      console.log(data)
       setDiagnoses(prev => ({ ...prev, [event.id]: data }))
     } catch {
       setDiagnoses(prev => ({ ...prev, [event.id]: { error: "Diagnosis failed. Please try again." } }))

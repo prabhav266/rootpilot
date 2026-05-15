@@ -7,4 +7,6 @@ class Event(Base):
     id = Column(Integer,primary_key=True,index=True)
     event_type = Column(String)
     repository_name = Column(String)
+    jobs_url = Column(String, nullable=True)
     payload = Column(Text)
+    
