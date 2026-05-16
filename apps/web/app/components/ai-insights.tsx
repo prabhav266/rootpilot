@@ -88,11 +88,7 @@ const aiInsight =
   },
 ]
 const insights = [
-  {
-    label: "Repository Health",
-    value: backendInsights?.health || "Analyzing",
-    badge: "badge-green",
-  },
+  
   {
     label: "Risk Level",
     value: backendInsights?.risk || "Low",
