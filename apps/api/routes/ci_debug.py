@@ -120,32 +120,31 @@ def analyze_ci(data: dict):
 
         summary = (
             "CI workflow failure detected. "
-            "Possible causes include failing tests, dependency issues, "
-            "environment configuration problems, or build instability."
+            "Review failing steps and workflow logs for details."
         )   
 
     return {
         "summary": summary,
         "likely_cause": (
-             "Automated workflow execution encountered one or more failing steps. "
+             "One or more CI workflow steps failed."
         ),
         "actions": [
             {
                 "step": "1",
-                "title": "Inspect GitHub Actions Logs",
-                "detail": "Review failing workflow logs to identify the exact CI failure point.",
+                "title": "Inspect Logs",
+                "detail": "Review GitHub Actions logs.",
                 "command": "gh run view"
             },
             {
                 "step": "2",
-                "title": "Review Recent Commits",
-                "detail": "Check recent commits for breaking changes or dependency conflicts.",
+                    "title": "Review Commits",
+                "detail": "Check recent code changes.",
                 "command": "git log --oneline"
             },
             {
                 "step": "3",
-                "title": "Verify Environment Configuration",
-                "detail": "Ensure dependencies and environment variables are configured correctly.",
+                "title": "Verify Dependencies",
+                "detail": "Ensure environment consistency.",
                 "command": "npm install"
             }
         ],
