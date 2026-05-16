@@ -27,10 +27,14 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(repo_router)
+app.include_router(
+    webhook_router,
+    prefix="/webhooks/github"
+)
 app.include_router(webhook_router)
 app.include_router(ai_router)
 app.include_router(ci_debug_router)
-app.include_router(websocket_router)
+
 
 
 @app.get("/")
