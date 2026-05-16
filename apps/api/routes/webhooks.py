@@ -8,7 +8,7 @@ from websocket_manager import manager
 
 router = APIRouter()
 
-@router.post("/webhooks/github")
+@router.post("/")
 async def github_webhook(request: Request):
 
     payload = await request.json()

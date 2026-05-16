@@ -89,12 +89,12 @@ function EventIcon({ type, conclusion }: { type: string; conclusion: string | nu
 export default function EventList() {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
-  const [wsConnected, setWsConnected] = useState(false)
+  //const [wsConnected, setWsConnected] = useState(false)
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [diagnosing, setDiagnosing] = useState<number | null>(null)
   const [diagnoses, setDiagnoses] = useState<Record<number, Diagnosis>>({})
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null)
-  const wsRef = useRef<WebSocket | null>(null)
+  //const wsRef = useRef<WebSocket | null>(null)
 
   const fetchEvents = async () => {
     try {
@@ -196,13 +196,13 @@ export default function EventList() {
           <h2 style={{ fontSize: "17px", fontWeight: 800, marginBottom: "3px", letterSpacing: "-0.2px" }}>
             Live Feed
           </h2>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {/*<div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-muted)" }}>
               {events.length} events
             </span>
             <span style={{ color: "var(--border-light)" }}>·</span>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span className={`status-dot ${wsConnected ? "dot-green pulse-dot" : "dot-red"}`} />
+             <span className={`status-dot ${wsConnected ? "dot-green pulse-dot" : "dot-red"}`} />
               <span style={{
                 fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 600,
                 letterSpacing: "0.06em",
@@ -211,7 +211,7 @@ export default function EventList() {
                 {wsConnected ? "WS LIVE" : "RECONNECTING"}
               </span>
             </div>
-          </div>
+          </div>*/}
         </div>
 
         <div style={{ display: "flex", gap: "8px" }}>

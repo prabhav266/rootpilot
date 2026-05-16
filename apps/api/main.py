@@ -32,6 +32,7 @@ app.include_router(ai_router)
 app.include_router(ci_debug_router)
 app.include_router(websocket_router)
 
+
 @app.get("/")
 def root():
     return {"message": "RootPilot API Running"}
