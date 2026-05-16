@@ -57,9 +57,15 @@ export default function AIInsights({ events }: { events: Event[] }) {
   if (pushEvents > 10) { pushFrequency = "Very Active"; pushColor = "var(--accent)"; pushBadge = "badge-blue" }
   else if (pushEvents > 5) { pushFrequency = "Active"; pushColor = "var(--accent)"; pushBadge = "badge-blue" }
 
-  const aiInsight =
-  backendInsights?.insight ||
-  "Analyzing repository ecosystem..."
+  const rawInsight =
+  backendInsights?.insight || ""
+
+const aiInsight =
+  rawInsight.includes("RESOURCE_EXHAUSTED") ||
+  rawInsight.includes("AI analysis failed") ||
+  rawInsight.includes("429")
+    ? "AI operational analysis is temporarily unavailable. Repository monitoring and workflow tracking continue normally."
+    : rawInsight || "Analyzing repository ecosystem..."
 
   const metrics = [
   {
