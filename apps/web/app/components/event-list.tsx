@@ -123,7 +123,7 @@ export default function EventList() {
     }
   }
 
-  useEffect(() => {
+  /*useEffect(() => {
     fetchEvents()
 
     const connect = () => {
@@ -139,7 +139,17 @@ export default function EventList() {
     }
     connect()
     return () => wsRef.current?.close()
-  }, [])
+  }, [])*/
+
+  useEffect(() => {
+  fetchEvents()
+
+  const interval = setInterval(() => {
+    fetchEvents()
+  }, 10000)
+
+  return () => clearInterval(interval)
+}, [])
 
   const diagnose = async (event: Event) => {
     if (false && diagnoses[event.id]) {
