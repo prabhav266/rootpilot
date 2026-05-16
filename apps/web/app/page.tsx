@@ -6,7 +6,7 @@ import LoginButton from "./components/login-button"
 import RepoList from "./components/repo-list"
 import EventList from "./components/event-list"
 import AIInsights from "./components/ai-insights"
-
+const API = process.env.NEXT_PUBLIC_API_URL
 interface Event {
   id: number
   event_type: string
@@ -23,7 +23,7 @@ export default function Home() {
   async function fetchEvents() {
 
     const res = await fetch(
-      "http://127.0.0.1:8000/events"
+      `${API}/events`
     )
 
     const data = await res.json()

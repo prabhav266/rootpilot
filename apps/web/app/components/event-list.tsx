@@ -2,8 +2,9 @@
 import { useEffect, useState, useRef } from "react"
 import AnalyticsDashboard from "./analytics-dashboard"
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-const WS  = process.env.NEXT_PUBLIC_WS_URL  || "ws://localhost:8000"
+const API = process.env.NEXT_PUBLIC_API_URL
+
+const WS = process.env.NEXT_PUBLIC_WS_URL
 
 interface Event {
   id: number
