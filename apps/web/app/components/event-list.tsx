@@ -479,7 +479,7 @@ export default function EventList() {
                       </div>
                     )}
 
-                    {/* Prevention */}
+                    
                     {diag.prevention && (
                       <div style={{
                         padding: "13px 16px",
