@@ -179,7 +179,7 @@ export default function EventList() {
     await fetch(`${API}/events`, { method: "DELETE" })
     setEvents([])
   }
-
+  //mojmastiiii
   const copyCmd = (cmd: string) => {
     navigator.clipboard.writeText(cmd)
     setCopiedCmd(cmd)
