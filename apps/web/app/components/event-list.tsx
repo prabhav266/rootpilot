@@ -521,7 +521,7 @@ export default function EventList() {
                 </div>
               )}
 
-              {/* ── Diagnosis error ── */}
+              
               {diag?.error && isExpanded && (
                 <div style={{
                   borderTop: "1px solid var(--border)",
