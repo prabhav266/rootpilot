@@ -33,7 +33,6 @@ app.include_router(
 )
 app.include_router(ai_router)
 app.include_router(ci_debug_router)
-app.include_router(websocket_router)
 
 
 
