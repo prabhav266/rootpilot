@@ -31,9 +31,9 @@ app.include_router(
     webhook_router,
     prefix="/webhooks/github"
 )
-app.include_router(webhook_router)
 app.include_router(ai_router)
 app.include_router(ci_debug_router)
+app.include_router(websocket_router)
 
 
 
