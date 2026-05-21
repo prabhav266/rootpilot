@@ -22,9 +22,12 @@ async def github_webhook(request: Request):
 
     db: Session = SessionLocal()
     
+    workflow_run = payload.get("workflow_run")
+
     jobs_url = (
-    payload.get("workflow_run", {})
-    .get("jobs_url")
+        workflow_run.get("jobs_url")
+        if workflow_run
+        else None
     )
 
     new_event = Event(
