@@ -16,9 +16,22 @@ from routes.websocket_route import (
     router as websocket_router
 )
 from routes.events import router as events_router
+from fastapi.middleware.cors import CORSMiddleware
 
 # Create DB tables
-Base.metadata.create_all(bind=engine)
+import logging
+
+logger = logging.getLogger(__name__)
+
+try:
+
+    Base.metadata.create_all(bind=engine)
+
+    logger.info("Database initialized")
+
+except Exception as e:
+
+    logger.error(f"Database init failed: {e}")
 
 # FastAPI app
 app = FastAPI()
@@ -26,9 +39,18 @@ app = FastAPI()
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+
+    allow_origins=[
+    "http://localhost:3000",
+    "https://rootpilot.vercel.app"
+    ] ,
+
+    allow_origin_regex=r"https://.*\.vercel\.app",
+
     allow_credentials=True,
+
     allow_methods=["*"],
+
     allow_headers=["*"],
 )
 

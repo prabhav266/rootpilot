@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from models.event import Event
+from utils.serializers import serialize_event
 
 router = APIRouter()
 
@@ -19,7 +20,7 @@ def get_events(limit: int = 50):
             .all()
         )
 
-        return events
+        return [serialize_event(e) for e in events]
 
     finally:
         db.close()
