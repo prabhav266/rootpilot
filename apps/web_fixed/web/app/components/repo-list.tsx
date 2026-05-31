@@ -4,7 +4,7 @@ import { useSession } from "next-auth/react"
 
 const API = process.env.NEXT_PUBLIC_API_URL
 
-interface Repo {
+interface GithubRepo {
   id: number
   name: string
   full_name: string
@@ -20,7 +20,6 @@ interface ConnectedRepo {
   repo_name: string
   github_repo_id: string
   repo_url: string
-  connected_at: string
 }
 
 function timeAgo(iso: string) {
@@ -41,46 +40,27 @@ const LANG_COLORS: Record<string, string> = {
 
 export default function RepoList() {
   const { data: session } = useSession()
-  const [repos, setRepos] = useState<Repo[]>([])
+  const [repos, setRepos] = useState<GithubRepo[]>([])
   const [connected, setConnected] = useState<ConnectedRepo[]>([])
   const [loading, setLoading] = useState(false)
   const [connecting, setConnecting] = useState<number | null>(null)
+  const [disconnecting, setDisconnecting] = useState<number | null>(null)
   const [search, setSearch] = useState("")
   const [copied, setCopied] = useState(false)
 
+  // Fetch repos already registered in our backend
   const fetchConnected = async () => {
-  try {
-
-    const res = await fetch(`${API}/events`)
-
-    if (!res.ok) return
-
-    const data = await res.json()
-
-    const uniqueRepos = Array.from(
-      new Map(
-        data.map((event: any) => [
-          event.repository_name,
-          {
-            id: event.id,
-            repo_name: event.repository_name,
-            github_repo_id: String(event.id),
-            repo_url: `https://github.com/${event.repository_name}`,
-            connected_at: new Date().toISOString(),
-          },
-        ])
-      ).values()
-    )
-
-    setConnected(uniqueRepos as ConnectedRepo[])
-
-  } catch (err) {
-
-    console.error(err)
-
+    try {
+      const res = await fetch(`${API}/repositories`)
+      if (!res.ok) return
+      const data: ConnectedRepo[] = await res.json()
+      setConnected(data)
+    } catch (err) {
+      console.error("fetchConnected error:", err)
+    }
   }
-}
 
+  // Fetch user's GitHub repos via GitHub API
   useEffect(() => {
     if (!session?.accessToken) return
     setLoading(true)
@@ -93,7 +73,7 @@ export default function RepoList() {
     fetchConnected()
   }, [session])
 
-  const connect = async (repo: Repo) => {
+  const connect = async (repo: GithubRepo) => {
     setConnecting(repo.id)
     try {
       const res = await fetch(`${API}/repositories/connect`, {
@@ -101,13 +81,28 @@ export default function RepoList() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           repo_name: repo.full_name,
-          github_repo_id: repo.id,
+          github_repo_id: String(repo.id),   // backend expects string
           repo_url: repo.html_url,
         }),
       })
-      if (res.ok) await fetchConnected()
+      if (res.ok || res.status === 409) {
+        // 409 = already connected, refresh either way
+        await fetchConnected()
+      }
     } finally {
       setConnecting(null)
+    }
+  }
+
+  const disconnect = async (repo: GithubRepo) => {
+    const match = connected.find(c => c.github_repo_id === String(repo.id))
+    if (!match) return
+    setDisconnecting(repo.id)
+    try {
+      await fetch(`${API}/repositories/${match.id}`, { method: "DELETE" })
+      await fetchConnected()
+    } finally {
+      setDisconnecting(null)
     }
   }
 
@@ -118,7 +113,7 @@ export default function RepoList() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const isConnected = (repo: Repo) =>
+  const isConnected = (repo: GithubRepo) =>
     connected.some(c => c.github_repo_id === String(repo.id))
 
   const filtered = repos.filter(r =>
@@ -129,8 +124,6 @@ export default function RepoList() {
   if (!session) {
     return (
       <div style={{ textAlign: "center", padding: "90px 24px 70px" }} className="fade-up">
-
-        {/* Icon */}
         <div style={{
           width: "72px", height: "72px", borderRadius: "20px",
           background: "linear-gradient(135deg, var(--accent) 0%, #0099bb 100%)",
@@ -160,13 +153,12 @@ export default function RepoList() {
           catches failures instantly, and tells you exactly how to fix them.
         </p>
 
-        {/* Feature pills */}
         <div style={{ display: "flex", justifyContent: "center", gap: "12px", flexWrap: "wrap" }}>
           {[
-            { icon: "⚡", label: "Real-time webhooks", color: "var(--accent)" },
-            { icon: "🤖", label: "Gemini AI diagnosis", color: "var(--purple)" },
-            { icon: "📊", label: "Analytics dashboard", color: "var(--green)" },
-            { icon: "🔌", label: "WebSocket live feed", color: "var(--amber)" },
+            { icon: "⚡", label: "Real-time webhooks" },
+            { icon: "🤖", label: "Gemini AI diagnosis" },
+            { icon: "📊", label: "Analytics dashboard" },
+            { icon: "🔌", label: "WebSocket live feed" },
           ].map(f => (
             <div key={f.label} style={{
               display: "flex", alignItems: "center", gap: "8px",
@@ -266,7 +258,6 @@ export default function RepoList() {
           </p>
         </div>
 
-        {/* Search */}
         <div style={{ position: "relative" }}>
           <svg
             width="13" height="13" viewBox="0 0 16 16" fill="none"
@@ -286,7 +277,7 @@ export default function RepoList() {
         </div>
       </div>
 
-      {/* Loading state */}
+      {/* Loading skeletons */}
       {loading && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "12px" }}>
           {Array.from({ length: 6 }).map((_, i) => (
@@ -307,6 +298,7 @@ export default function RepoList() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "12px" }}>
           {filtered.map((repo, idx) => {
             const conn = isConnected(repo)
+            const isBusy = connecting === repo.id || disconnecting === repo.id
             return (
               <div
                 key={repo.id}
@@ -371,14 +363,14 @@ export default function RepoList() {
 
                 {/* Actions */}
                 <div style={{ display: "flex", gap: "8px" }}>
-                  {!conn && (
+                  {!conn ? (
                     <button
                       onClick={() => connect(repo)}
-                      disabled={connecting === repo.id}
+                      disabled={isBusy}
                       className="btn btn-primary"
                       style={{ padding: "7px 14px", fontSize: "12px", flex: 1, justifyContent: "center" }}
                     >
-                      {connecting === repo.id ? (
+                      {isBusy ? (
                         <>
                           <span className="spin" style={{
                             width: "11px", height: "11px",
@@ -398,6 +390,25 @@ export default function RepoList() {
                           Connect
                         </>
                       )}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => disconnect(repo)}
+                      disabled={isBusy}
+                      className="btn btn-danger"
+                      style={{ padding: "7px 14px", fontSize: "12px", flex: 1, justifyContent: "center" }}
+                    >
+                      {isBusy ? (
+                        <>
+                          <span className="spin" style={{
+                            width: "11px", height: "11px",
+                            border: "2px solid rgba(255,61,87,0.25)",
+                            borderTopColor: "var(--red)",
+                            borderRadius: "50%", display: "inline-block",
+                          }} />
+                          Disconnecting…
+                        </>
+                      ) : "Disconnect"}
                     </button>
                   )}
                   <a
@@ -424,6 +435,19 @@ export default function RepoList() {
         <div style={{ textAlign: "center", padding: "48px", color: "var(--text-muted)" }}>
           <div style={{ fontSize: "32px", marginBottom: "12px" }}>🔍</div>
           <p style={{ fontSize: "14px" }}>No repositories match "{search}"</p>
+        </div>
+      )}
+
+      {/* No repos at all */}
+      {!loading && repos.length === 0 && (
+        <div className="card" style={{ padding: "48px 24px", textAlign: "center" }}>
+          <div style={{ fontSize: "36px", marginBottom: "14px" }}>📦</div>
+          <p style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-secondary)", marginBottom: "6px" }}>
+            No repositories found
+          </p>
+          <p style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+            Make sure your GitHub account has repositories and your token has repo access.
+          </p>
         </div>
       )}
     </div>

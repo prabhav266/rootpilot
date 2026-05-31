@@ -4,5 +4,6 @@ def serialize_event(event):
         "event_type": event.event_type,
         "repository_name": event.repository_name,
         "jobs_url": event.jobs_url,
-        "payload": event.payload
+        "payload": event.payload,
+        "created_at": event.created_at.isoformat() if event.created_at else None,
     }

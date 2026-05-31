@@ -1,110 +1,107 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
+
 const API = process.env.NEXT_PUBLIC_API_URL
+
 interface Event {
   id: number
   event_type: string
   repository_name: string
+  payload?: string
 }
 
+interface BackendInsights {
+  health: string
+  risk: string
+  total_events: number
+  push_events: number
+  workflow_events: number
+  failed_workflows: number
+  repositories: number
+  anomalies: string[]
+  insight: string
+}
 
 export default function AIInsights({ events }: { events: Event[] }) {
-  const [backendInsights, setBackendInsights] =
-  useState<any>(null)
+  const [backendInsights, setBackendInsights] = useState<BackendInsights | null>(null)
+  const [loadingInsights, setLoadingInsights] = useState(false)
+  const prevLengthRef = useRef(-1)
+
   useEffect(() => {
+    // Only re-fetch when the event count actually changes, not on every render
+    if (events.length === 0 || events.length === prevLengthRef.current) return
+    prevLengthRef.current = events.length
 
-  async function fetchInsights() {
-
-    const res = await fetch(
-      `${API}/ai/insights`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(events),
+    async function fetchInsights() {
+      setLoadingInsights(true)
+      try {
+        const res = await fetch(`${API}/ai/insights`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(events),
+        })
+        if (res.ok) {
+          const data: BackendInsights = await res.json()
+          setBackendInsights(data)
+        }
+      } catch (err) {
+        console.error("AI insights error:", err)
+      } finally {
+        setLoadingInsights(false)
       }
-    )
+    }
 
-    const data = await res.json()
-
-    setBackendInsights(data)
-  }
-
-  if (events.length > 0) {
     fetchInsights()
-  }
+  }, [events])
 
-}, [events])
-  const totalEvents = events.length
-  const pushEvents = events.filter((e) => e.event_type === "push").length
-  const workflowEvents = events.filter((e) => e.event_type === "workflow_run").length
-
-  let activityLevel = "Low"
-  let activityColor = "var(--text-muted)"
-  let activityBadge = "badge-muted"
-  if (totalEvents > 15) { activityLevel = "High"; activityColor = "var(--red)"; activityBadge = "badge-red" }
-  else if (totalEvents > 5) { activityLevel = "Moderate"; activityColor = "var(--amber)"; activityBadge = "badge-amber" }
-  else { activityBadge = "badge-muted" }
-
-  let workflowHealth = "Stable"
-  let healthColor = "var(--green)"
-  let healthBadge = "badge-green"
-  if (workflowEvents > 10) { workflowHealth = "Heavy CI"; healthColor = "var(--amber)"; healthBadge = "badge-amber" }
-
-  let pushFrequency = "Calm"
-  let pushColor = "var(--text-secondary)"
-  let pushBadge = "badge-muted"
-  if (pushEvents > 10) { pushFrequency = "Very Active"; pushColor = "var(--accent)"; pushBadge = "badge-blue" }
-  else if (pushEvents > 5) { pushFrequency = "Active"; pushColor = "var(--accent)"; pushBadge = "badge-blue" }
-
-  const rawInsight =
-  backendInsights?.insight || ""
-
-const aiInsight =
-  rawInsight.includes("RESOURCE_EXHAUSTED") ||
-  rawInsight.includes("AI analysis failed") ||
-  rawInsight.includes("429")
-    ? "AI operational analysis is temporarily unavailable. Repository monitoring and workflow tracking continue normally."
-    : rawInsight || "Analyzing repository ecosystem..."
+  const rawInsight = backendInsights?.insight || ""
+  const aiInsight =
+    rawInsight.includes("RESOURCE_EXHAUSTED") ||
+    rawInsight.includes("AI analysis failed") ||
+    rawInsight.includes("429") ||
+    rawInsight.includes("503")
+      ? "AI operational analysis is temporarily unavailable. Repository monitoring and workflow tracking continue normally."
+      : rawInsight || (events.length === 0 ? "No events yet — connect a repository and trigger some workflows." : "Analyzing repository ecosystem…")
 
   const metrics = [
-  {
-    label: "Total Events",
-    value: backendInsights?.total_events || 0,
-    color: "var(--accent)",
-    icon: "⚡",
-  },
-  {
-    label: "Push Events",
-    value: backendInsights?.push_events || 0,
-    color: "var(--green)",
-    icon: "🚀",
-  },
-  {
-    label: "Workflow Runs",
-    value: backendInsights?.workflow_events || 0,
-    color: "var(--purple)",
-    icon: "🔄",
-  },
-]
-const insights = [
-  {
-    label: "Repository Health",
-    value: backendInsights?.health || "Analyzing",
-    badge: "badge-green",
-  },
-  {
-    label: "Risk Level",
-    value: backendInsights?.risk || "Low",
-    badge: "badge-amber",
-  },
-  {
-    label: "Repositories",
-    value: backendInsights?.repositories || 0,
-    badge: "badge-blue",
-  },
-]
+    {
+      label: "Total Events",
+      value: backendInsights?.total_events ?? events.length,
+      color: "var(--accent)",
+      icon: "⚡",
+    },
+    {
+      label: "Push Events",
+      value: backendInsights?.push_events ?? events.filter(e => e.event_type === "push").length,
+      color: "var(--green)",
+      icon: "🚀",
+    },
+    {
+      label: "Workflow Runs",
+      value: backendInsights?.workflow_events ?? events.filter(e => e.event_type === "workflow_run").length,
+      color: "var(--purple)",
+      icon: "🔄",
+    },
+  ]
+
+  const insights = [
+    {
+      label: "Repository Health",
+      value: backendInsights?.health || "—",
+      badge: backendInsights?.health === "Healthy" ? "badge-green" : backendInsights?.health === "Degraded" ? "badge-red" : "badge-amber",
+    },
+    {
+      label: "Risk Level",
+      value: backendInsights?.risk || "—",
+      badge: backendInsights?.risk === "High" ? "badge-red" : backendInsights?.risk === "Medium" ? "badge-amber" : "badge-green",
+    },
+    {
+      label: "Repositories",
+      value: backendInsights?.repositories ?? 0,
+      badge: "badge-blue",
+    },
+  ]
+
   return (
     <div
       className="card"
@@ -113,6 +110,7 @@ const insights = [
         background: "rgba(11,13,17,0.95)",
         position: "relative",
         overflow: "hidden",
+        marginBottom: "32px",
       }}
     >
       {/* Corner glow */}
@@ -147,17 +145,24 @@ const insights = [
           </p>
         </div>
 
-        {/* Live indicator */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <span
-            className="status-dot dot-green pulse-dot"
-            style={{ width: "6px", height: "6px" }}
-          />
+          {loadingInsights ? (
+            <span className="spin" style={{
+              width: "8px", height: "8px",
+              border: "1.5px solid var(--purple-dim)",
+              borderTopColor: "var(--purple)",
+              borderRadius: "50%", display: "inline-block",
+            }} />
+          ) : (
+            <span className="status-dot dot-green pulse-dot" style={{ width: "6px", height: "6px" }} />
+          )}
           <span style={{
             fontFamily: "var(--font-mono)", fontSize: "9px",
-            fontWeight: 700, color: "var(--green)", letterSpacing: "0.1em",
+            fontWeight: 700,
+            color: loadingInsights ? "var(--purple)" : "var(--green)",
+            letterSpacing: "0.1em",
           }}>
-            LIVE
+            {loadingInsights ? "ANALYZING" : "LIVE"}
           </span>
         </div>
       </div>
@@ -202,7 +207,7 @@ const insights = [
         overflow: "hidden",
         marginBottom: "18px",
       }}>
-        {insights.map((row: any, i: number) => (
+        {insights.map((row, i) => (
           <div key={row.label} style={{
             display: "flex", alignItems: "center",
             justifyContent: "space-between",
@@ -219,6 +224,24 @@ const insights = [
           </div>
         ))}
       </div>
+
+      {/* ── Anomalies ── */}
+      {backendInsights?.anomalies && backendInsights.anomalies.length > 0 && (
+        <div style={{
+          padding: "11px 14px", marginBottom: "14px",
+          background: "var(--amber-dim)",
+          border: "1px solid rgba(255,176,32,0.16)",
+          borderLeft: "3px solid var(--amber)",
+          borderRadius: "var(--r-md)",
+        }}>
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "var(--amber)", marginBottom: "6px", letterSpacing: "0.06em" }}>
+            ⚠ ANOMALIES DETECTED
+          </p>
+          {backendInsights.anomalies.map((a, i) => (
+            <p key={i} style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.6 }}>• {a}</p>
+          ))}
+        </div>
+      )}
 
       {/* ── AI Insight block ── */}
       <div style={{

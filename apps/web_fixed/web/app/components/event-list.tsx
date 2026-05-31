@@ -1,22 +1,22 @@
 "use client"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 import AnalyticsDashboard from "./analytics-dashboard"
+import { useSession } from "next-auth/react"
 
 const API = process.env.NEXT_PUBLIC_API_URL
-
-const WS = process.env.NEXT_PUBLIC_WS_URL
 
 interface Event {
   id: number
   event_type: string
   repository_name: string
   payload: string
+  jobs_url?: string
   summary?: string
   created_at?: string
 }
 
 interface DiagnosisAction {
-  step: number
+  step: string | number
   title: string
   detail: string
   command: string
@@ -26,7 +26,8 @@ interface Diagnosis {
   summary?: string
   likely_cause?: string
   actions?: DiagnosisAction[]
-  prevention?: string
+  prevention?: string | string[]
+  failed_steps?: { step_name: string; status: string }[]
   error?: string
 }
 
@@ -87,14 +88,13 @@ function EventIcon({ type, conclusion }: { type: string; conclusion: string | nu
 }
 
 export default function EventList() {
+  const { data: session } = useSession()
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
-  //const [wsConnected, setWsConnected] = useState(false)
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [diagnosing, setDiagnosing] = useState<number | null>(null)
   const [diagnoses, setDiagnoses] = useState<Record<number, Diagnosis>>({})
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null)
-  //const wsRef = useRef<WebSocket | null>(null)
 
   const fetchEvents = async () => {
     try {
@@ -102,6 +102,7 @@ export default function EventList() {
       if (!res.ok) return
       const data: Event[] = await res.json()
 
+      // Fetch AI summaries for each event
       const summarized = await Promise.all(
         data.map(async (event) => {
           try {
@@ -123,49 +124,39 @@ export default function EventList() {
     }
   }
 
-  /*useEffect(() => {
-    fetchEvents()
-
-    const connect = () => {
-      const ws = new WebSocket(`${WS}/ws`)
-      wsRef.current = ws
-      ws.onopen = () => setWsConnected(true)
-      ws.onclose = () => {
-        setWsConnected(false)
-        setTimeout(connect, 3000)
-      }
-      ws.onerror = () => setWsConnected(false)
-      ws.onmessage = () => fetchEvents()
-    }
-    connect()
-    return () => wsRef.current?.close()
-  }, [])*/
-
   useEffect(() => {
-  fetchEvents()
-
-  const interval = setInterval(() => {
     fetchEvents()
-  }, 10000)
-
-  return () => clearInterval(interval)
-}, [])
+    const interval = setInterval(fetchEvents, 10000)
+    return () => clearInterval(interval)
+  }, [])
 
   const diagnose = async (event: Event) => {
-    if (false && diagnoses[event.id]) {
+    // If we already have a diagnosis, just toggle visibility
+    if (diagnoses[event.id]) {
       setExpandedId(expandedId === event.id ? null : event.id)
       return
     }
+
     setDiagnosing(event.id)
     setExpandedId(event.id)
+
     try {
+      // Build the payload /ci/analyze expects
+      const body: Record<string, string> = {
+        jobs_url: event.jobs_url || "",
+      }
+
+      // Pass the GitHub token if available so the backend can fetch job details
+      if (session?.accessToken) {
+        body.github_token = session.accessToken
+      }
+
       const res = await fetch(`${API}/ci/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(event),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
-      console.log(data)
       setDiagnoses(prev => ({ ...prev, [event.id]: data }))
     } catch {
       setDiagnoses(prev => ({ ...prev, [event.id]: { error: "Diagnosis failed. Please try again." } }))
@@ -178,8 +169,9 @@ export default function EventList() {
     if (!confirm("Clear all events?")) return
     await fetch(`${API}/events`, { method: "DELETE" })
     setEvents([])
+    setDiagnoses({})
   }
-  //mojmastiiii
+
   const copyCmd = (cmd: string) => {
     navigator.clipboard.writeText(cmd)
     setCopiedCmd(cmd)
@@ -196,22 +188,9 @@ export default function EventList() {
           <h2 style={{ fontSize: "17px", fontWeight: 800, marginBottom: "3px", letterSpacing: "-0.2px" }}>
             Live Feed
           </h2>
-          {/*<div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-muted)" }}>
-              {events.length} events
-            </span>
-            <span style={{ color: "var(--border-light)" }}>·</span>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-             <span className={`status-dot ${wsConnected ? "dot-green pulse-dot" : "dot-red"}`} />
-              <span style={{
-                fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 600,
-                letterSpacing: "0.06em",
-                color: wsConnected ? "var(--green)" : "var(--red)",
-              }}>
-                {wsConnected ? "WS LIVE" : "RECONNECTING"}
-              </span>
-            </div>
-          </div>*/}
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-muted)" }}>
+            {events.length} events · polling every 10s
+          </p>
         </div>
 
         <div style={{ display: "flex", gap: "8px" }}>
@@ -228,7 +207,7 @@ export default function EventList() {
         </div>
       </div>
 
-      {/* Loading */}
+      {/* Loading skeletons */}
       {loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {Array.from({ length: 4 }).map((_, i) => (
@@ -278,7 +257,7 @@ export default function EventList() {
                 <EventIcon type={event.event_type} conclusion={conclusion} />
 
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Top badge row */}
+                  {/* Badge row */}
                   <div style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: "5px", flexWrap: "wrap" }}>
                     <span className={eventBadgeClass(event.event_type)}>
                       {event.event_type}
@@ -356,10 +335,7 @@ export default function EventList() {
 
               {/* ── AI Diagnosis panel ── */}
               {isExpanded && diag && !diag.error && (
-                <div style={{
-                  borderTop: "1px solid var(--border)",
-                  background: "rgba(0,0,0,.22)",
-                }}>
+                <div style={{ borderTop: "1px solid var(--border)", background: "rgba(0,0,0,.22)" }}>
                   {/* Panel header */}
                   <div style={{
                     padding: "14px 18px",
@@ -490,7 +466,7 @@ export default function EventList() {
                       </div>
                     )}
 
-                    
+                    {/* Prevention */}
                     {diag.prevention && (
                       <div style={{
                         padding: "13px 16px",
@@ -503,7 +479,9 @@ export default function EventList() {
                           💡 PREVENTION
                         </p>
                         <p style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.7 }}>
-                          {diag.prevention}
+                          {Array.isArray(diag.prevention)
+                            ? diag.prevention.join(" ")
+                            : diag.prevention}
                         </p>
                       </div>
                     )}
@@ -511,7 +489,7 @@ export default function EventList() {
                 </div>
               )}
 
-              {/* ── Raw payload ── */}
+              {/* ── Raw payload (expanded, no diagnosis) ── */}
               {isExpanded && !diag && (
                 <div style={{ borderTop: "1px solid var(--border)", background: "rgba(0,0,0,.15)" }}>
                   <div style={{ padding: "10px 18px", borderBottom: "1px solid var(--border)" }}>
@@ -526,12 +504,15 @@ export default function EventList() {
                     overflowX: "auto", maxHeight: "280px", overflowY: "auto",
                     lineHeight: 1.65,
                   }}>
-                    {JSON.stringify(JSON.parse(event.payload), null, 2)}
+                    {(() => {
+                      try { return JSON.stringify(JSON.parse(event.payload), null, 2) }
+                      catch { return event.payload }
+                    })()}
                   </pre>
                 </div>
               )}
 
-              
+              {/* Error state */}
               {diag?.error && isExpanded && (
                 <div style={{
                   borderTop: "1px solid var(--border)",
