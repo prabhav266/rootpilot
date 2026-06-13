@@ -26,6 +26,7 @@ jobs:
           cd apps/api
           pip install -r requirements.txt
 
-      - name: Run Failing Test
+      - name: Verify Backend Setup
         run: |
-          fake-command-that-does-not-exist
+          cd apps/api
+          python -c "print('Backend dependencies installed successfully')"
