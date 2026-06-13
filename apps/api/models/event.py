@@ -5,7 +5,6 @@ from database import Base
 
 class Event(Base):
     __tablename__ = "events"
-    #test
     id = Column(Integer, primary_key=True, index=True)
     event_type = Column(String)
     repository_name = Column(String)
