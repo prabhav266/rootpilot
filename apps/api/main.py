@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import engine, Base
+from db_compat import ensure_schema
 
 from models.user import User
 from models.repository import Repository
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
     # STARTUP
     try:
         Base.metadata.create_all(bind=engine)
+        ensure_schema(engine)
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Database startup failed: {e}")

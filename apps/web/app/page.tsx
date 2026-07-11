@@ -1,39 +1,52 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useSession } from "next-auth/react"
 
 import LoginButton from "./components/login-button"
 import RepoList from "./components/repo-list"
 import EventList from "./components/event-list"
 import AIInsights from "./components/ai-insights"
-const API = process.env.NEXT_PUBLIC_API_URL
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 interface Event {
   id: number
+  owner_github_id?: string | null
   event_type: string
+  repository_github_id?: string | null
   repository_name: string
   payload: string
   summary?: string
 }
 
 export default function Home() {
+  const { data: session } = useSession()
 
   const [events, setEvents] = useState<Event[]>([])
+  const githubUserId = session?.user?.id
+
   useEffect(() => {
 
   async function fetchEvents() {
+    if (!githubUserId) {
+      setEvents([])
+      return
+    }
 
-    const res = await fetch(
-      `${API}/events`
-    )
+    try {
+      const params = new URLSearchParams({ owner_github_id: githubUserId })
+      const res = await fetch(`${API}/events?${params.toString()}`)
+      if (!res.ok) return
 
-    const data = await res.json()
-
-    setEvents(data)
+      const data = await res.json()
+      setEvents(data)
+    } catch (err) {
+      console.error("fetchEvents error:", err)
+    }
   }
 
   fetchEvents()
 
-}, [])
+}, [githubUserId])
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", position: "relative", overflow: "hidden" }}>
 

@@ -4,29 +4,29 @@ services:
 
   backend:
 
-    build: ./apps/api_fixed
+    build: ./apps/api
 
     ports:
       - "8000:8000"
 
     volumes:
-      - ./apps/api_fixed:/app
+      - ./apps/api:/app
 
     env_file:
-      - ./apps/api_fixed/.env
+      - ./apps/api/.env
 
     depends_on:
       - db
 
   frontend:
 
-    build: ./apps/web_fixed
+    build: ./apps/web
 
     ports:
       - "3000:3000"
 
     volumes:
-      - ./apps/web_fixed:/app
+      - ./apps/web:/app
       - /app/node_modules
 
     depends_on:

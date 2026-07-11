@@ -1,8 +1,8 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 
-const API = process.env.NEXT_PUBLIC_API_URL
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 interface GithubRepo {
   id: number
@@ -17,6 +17,8 @@ interface GithubRepo {
 
 interface ConnectedRepo {
   id: number
+  owner_github_id: string
+  owner_login: string | null
   repo_name: string
   github_repo_id: string
   repo_url: string
@@ -47,46 +49,65 @@ export default function RepoList() {
   const [disconnecting, setDisconnecting] = useState<number | null>(null)
   const [search, setSearch] = useState("")
   const [copied, setCopied] = useState(false)
+  const githubUserId = session?.user?.id
 
   // Fetch repos already registered in our backend
-  const fetchConnected = async () => {
+  const fetchConnected = useCallback(async () => {
+    if (!githubUserId) return
+
     try {
-      const res = await fetch(`${API}/repositories`)
+      const params = new URLSearchParams({ owner_github_id: githubUserId })
+      const res = await fetch(`${API}/repositories?${params.toString()}`)
       if (!res.ok) return
       const data: ConnectedRepo[] = await res.json()
       setConnected(data)
     } catch (err) {
       console.error("fetchConnected error:", err)
     }
-  }
+  }, [githubUserId])
 
   // Fetch user's GitHub repos via GitHub API
   useEffect(() => {
-    if (!session?.accessToken) return
-    setLoading(true)
-    fetch("https://api.github.com/user/repos?sort=updated&per_page=50&type=all", {
-      headers: { Authorization: `token ${session.accessToken}` },
-    })
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setRepos(data) })
-      .finally(() => setLoading(false))
-    fetchConnected()
-  }, [session])
+    async function loadRepos() {
+      if (!session?.accessToken || !githubUserId) {
+        setRepos([])
+        setConnected([])
+        return
+      }
+
+      setLoading(true)
+      try {
+        const res = await fetch("https://api.github.com/user/repos?sort=updated&per_page=50&type=all", {
+          headers: { Authorization: `token ${session.accessToken}` },
+        })
+        const data = await res.json()
+        if (Array.isArray(data)) setRepos(data)
+        await fetchConnected()
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadRepos()
+  }, [session?.accessToken, githubUserId, fetchConnected])
 
   const connect = async (repo: GithubRepo) => {
+    if (!githubUserId) return
+
     setConnecting(repo.id)
     try {
       const res = await fetch(`${API}/repositories/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          owner_github_id: githubUserId,
+          owner_login: session?.user?.login ?? session?.user?.name ?? null,
           repo_name: repo.full_name,
           github_repo_id: String(repo.id),   // backend expects string
           repo_url: repo.html_url,
         }),
       })
-      if (res.ok || res.status === 409) {
-        // 409 = already connected, refresh either way
+      if (res.ok) {
         await fetchConnected()
       }
     } finally {
@@ -95,11 +116,14 @@ export default function RepoList() {
   }
 
   const disconnect = async (repo: GithubRepo) => {
+    if (!githubUserId) return
+
     const match = connected.find(c => c.github_repo_id === String(repo.id))
     if (!match) return
     setDisconnecting(repo.id)
     try {
-      await fetch(`${API}/repositories/${match.id}`, { method: "DELETE" })
+      const params = new URLSearchParams({ owner_github_id: githubUserId })
+      await fetch(`${API}/repositories/${match.id}?${params.toString()}`, { method: "DELETE" })
       await fetchConnected()
     } finally {
       setDisconnecting(null)
@@ -434,7 +458,7 @@ export default function RepoList() {
       {!loading && filtered.length === 0 && repos.length > 0 && (
         <div style={{ textAlign: "center", padding: "48px", color: "var(--text-muted)" }}>
           <div style={{ fontSize: "32px", marginBottom: "12px" }}>🔍</div>
-          <p style={{ fontSize: "14px" }}>No repositories match "{search}"</p>
+          <p style={{ fontSize: "14px" }}>{`No repositories match "${search}"`}</p>
         </div>
       )}
 

@@ -1,7 +1,7 @@
 "use client"
 import { useEffect, useState, useRef } from "react"
 
-const API = process.env.NEXT_PUBLIC_API_URL
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 interface Event {
   id: number
@@ -264,7 +264,7 @@ export default function AIInsights({ events }: { events: Event[] }) {
           fontSize: "13px", color: "var(--text-secondary)",
           lineHeight: 1.75, fontStyle: "italic",
         }}>
-          "{aiInsight.trim()}"
+          {`"${aiInsight.trim()}"`}
         </p>
       </div>
     </div>

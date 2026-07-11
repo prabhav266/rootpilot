@@ -18,6 +18,18 @@ interface KPIProps {
   icon: string
 }
 
+interface TooltipPayload {
+  color?: string
+  name?: string
+  value?: string | number
+}
+
+interface CustomTooltipProps {
+  active?: boolean
+  payload?: TooltipPayload[]
+  label?: string | number
+}
+
 function KPICard({ label, value, sub, color, icon }: KPIProps) {
   return (
     <div className="card" style={{ padding: "20px 22px", position: "relative", overflow: "hidden" }}>
@@ -64,7 +76,7 @@ function KPICard({ label, value, sub, color, icon }: KPIProps) {
   )
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   if (!active || !payload?.length) return null
   return (
     <div style={{
@@ -76,7 +88,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       fontFamily: "var(--font-mono)",
     }}>
       {label && <p style={{ color: "var(--text-muted)", marginBottom: "4px", fontSize: "10px" }}>{label}</p>}
-      {payload.map((p: any, i: number) => (
+      {payload.map((p, i) => (
         <p key={i} style={{ color: p.color || "var(--accent)" }}>
           {p.name || ""}: <strong>{p.value}</strong>
         </p>

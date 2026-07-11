@@ -13,6 +13,7 @@ def get_events(
     limit: int = Query(default=50, ge=1, le=500),
     event_type: str = Query(default=None),
     repository: str = Query(default=None),
+    owner_github_id: str = Query(default=None),
 ):
     db: Session = SessionLocal()
     try:
@@ -24,6 +25,9 @@ def get_events(
         if repository:
             query = query.filter(Event.repository_name.ilike(f"%{repository}%"))
 
+        if owner_github_id:
+            query = query.filter(Event.owner_github_id == owner_github_id)
+
         events = query.limit(limit).all()
         return [serialize_event(e) for e in events]
 
@@ -32,11 +36,15 @@ def get_events(
 
 
 @router.delete("/events")
-def clear_events():
+def clear_events(owner_github_id: str = Query(default=None)):
     db: Session = SessionLocal()
     try:
-        count = db.query(Event).count()
-        db.query(Event).delete()
+        query = db.query(Event)
+        if owner_github_id:
+            query = query.filter(Event.owner_github_id == owner_github_id)
+
+        count = query.count()
+        query.delete()
         db.commit()
         return {"message": f"Deleted {count} events"}
     except Exception as e:

@@ -1,4 +1,5 @@
 "use client"
+import Image from "next/image"
 import { signIn, signOut, useSession } from "next-auth/react"
 
 export default function LoginButton() {
@@ -36,9 +37,11 @@ export default function LoginButton() {
         {/* User */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           {session.user?.image && (
-            <img
+            <Image
               src={session.user.image}
               alt={session.user.name || "user"}
+              width={28}
+              height={28}
               style={{
                 width: "28px", height: "28px", borderRadius: "50%",
                 border: "1.5px solid var(--border-light)",

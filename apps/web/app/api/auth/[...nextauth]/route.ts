@@ -15,33 +15,32 @@ const handler = NextAuth({
   ],
 
   callbacks: {
-  async jwt({ token, account }) {
+    async jwt({ token, account, profile }) {
+      if (account) {
+        token.accessToken = account.access_token
+      }
 
-    console.log("JWT CALLBACK")
-    console.log("ACCOUNT:", account)
-    console.log("TOKEN BEFORE:", token)
+      if (profile) {
+        const githubProfile = profile as { id?: number | string; login?: string }
+        token.githubId = githubProfile.id ? String(githubProfile.id) : token.sub
+        token.githubLogin = githubProfile.login
+      }
 
-    if (account) {
-      token.accessToken = account.access_token
-    }
+      return token
+    },
 
-    console.log("TOKEN AFTER:", token)
-
-    return token
+    async session({ session, token }) {
+      return {
+        ...session,
+        accessToken: token.accessToken,
+        user: {
+          ...session.user,
+          id: token.githubId ?? token.sub,
+          login: token.githubLogin,
+        },
+      }
+    },
   },
-
-  async session({ session, token }) {
-
-    console.log("SESSION CALLBACK")
-    console.log("SESSION:", session)
-    console.log("TOKEN:", token)
-
-    return {
-      ...session,
-      accessToken: token.accessToken,
-    }
-  },
-},
 
   secret: process.env.NEXTAUTH_SECRET,
 })

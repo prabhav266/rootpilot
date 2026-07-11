@@ -1,6 +1,19 @@
 import "./globals.css"
 import Providers from "./providers"
 import type { Metadata } from "next"
+import { JetBrains_Mono, Syne } from "next/font/google"
+
+const syne = Syne({
+  subsets: ["latin"],
+  weight: ["400", "600", "700", "800"],
+  variable: "--font-sans",
+})
+
+const jetBrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-mono",
+})
 
 export const metadata: Metadata = {
   title: "RootPilot — GitHub Actions Monitor",
@@ -10,15 +23,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;600;700;800&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body>
+      <body className={`${syne.variable} ${jetBrainsMono.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>

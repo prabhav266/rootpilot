@@ -7,6 +7,7 @@ import os
 
 from database import SessionLocal
 from models.event import Event
+from models.repository import Repository
 from websocket_manager import manager
 from utils.serializers import serialize_event
 
@@ -46,7 +47,9 @@ async def github_webhook(request: Request):
     payload = await request.json()
 
     event_type = request.headers.get("X-GitHub-Event", "unknown")
-    repository_name = payload.get("repository", {}).get("full_name", "unknown")
+    repository = payload.get("repository", {})
+    repository_name = repository.get("full_name", "unknown")
+    repository_github_id = str(repository.get("id")) if repository.get("id") else None
 
     # Extract jobs_url for workflow_run events
     jobs_url = None
@@ -56,23 +59,46 @@ async def github_webhook(request: Request):
     # Persist event to database
     db: Session = SessionLocal()
     try:
-        event = Event(
-            event_type=event_type,
-            repository_name=repository_name,
-            jobs_url=jobs_url,
-            payload=json.dumps(payload),
-        )
-        db.add(event)
+        connected_repos = []
+        if repository_github_id:
+            connected_repos = (
+                db.query(Repository)
+                .filter(Repository.github_repo_id == repository_github_id)
+                .all()
+            )
+
+        owners = connected_repos or [None]
+        events = []
+        payload_json = json.dumps(payload)
+
+        for connected_repo in owners:
+            event = Event(
+                owner_github_id=(
+                    connected_repo.owner_github_id if connected_repo else None
+                ),
+                event_type=event_type,
+                repository_github_id=repository_github_id,
+                repository_name=repository_name,
+                jobs_url=jobs_url,
+                payload=payload_json,
+            )
+            db.add(event)
+            events.append(event)
+
         db.commit()
-        db.refresh(event)
 
-        # Broadcast to WebSocket clients
-        try:
-            await manager.broadcast(json.dumps(serialize_event(event)))
-        except Exception:
-            pass  # WebSocket broadcast failure should not fail the webhook
+        event_ids = []
+        for event in events:
+            db.refresh(event)
+            event_ids.append(event.id)
 
-        return {"message": "Webhook received", "event_id": event.id}
+            # Broadcast to WebSocket clients
+            try:
+                await manager.broadcast(json.dumps(serialize_event(event)))
+            except Exception:
+                pass  # WebSocket broadcast failure should not fail the webhook
+
+        return {"message": "Webhook received", "event_ids": event_ids}
 
     except Exception as e:
         db.rollback()

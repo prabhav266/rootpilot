@@ -1,13 +1,15 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import AnalyticsDashboard from "./analytics-dashboard"
 import { useSession } from "next-auth/react"
 
-const API = process.env.NEXT_PUBLIC_API_URL
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 interface Event {
   id: number
+  owner_github_id?: string | null
   event_type: string
+  repository_github_id?: string | null
   repository_name: string
   payload: string
   jobs_url?: string
@@ -95,10 +97,21 @@ export default function EventList() {
   const [diagnosing, setDiagnosing] = useState<number | null>(null)
   const [diagnoses, setDiagnoses] = useState<Record<number, Diagnosis>>({})
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null)
+  const githubUserId = session?.user?.id
 
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
+    if (!githubUserId) {
+      setEvents([])
+      setLoading(false)
+      return
+    }
+
     try {
-      const res = await fetch(`${API}/events?limit=50`)
+      const params = new URLSearchParams({
+        limit: "50",
+        owner_github_id: githubUserId,
+      })
+      const res = await fetch(`${API}/events?${params.toString()}`)
       if (!res.ok) return
       const data: Event[] = await res.json()
 
@@ -122,13 +135,17 @@ export default function EventList() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [githubUserId])
 
   useEffect(() => {
-    fetchEvents()
-    const interval = setInterval(fetchEvents, 10000)
+    queueMicrotask(() => {
+      void fetchEvents()
+    })
+    const interval = setInterval(() => {
+      void fetchEvents()
+    }, 10000)
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchEvents])
 
   const diagnose = async (event: Event) => {
     // If we already have a diagnosis, just toggle visibility
@@ -166,8 +183,11 @@ export default function EventList() {
   }
 
   const clearEvents = async () => {
+    if (!githubUserId) return
+
     if (!confirm("Clear all events?")) return
-    await fetch(`${API}/events`, { method: "DELETE" })
+    const params = new URLSearchParams({ owner_github_id: githubUserId })
+    await fetch(`${API}/events?${params.toString()}`, { method: "DELETE" })
     setEvents([])
     setDiagnoses({})
   }

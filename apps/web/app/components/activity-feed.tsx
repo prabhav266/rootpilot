@@ -1,11 +1,14 @@
 "use client"
 import { useEffect, useState } from "react"
+import { useSession } from "next-auth/react"
 
-const API = process.env.NEXT_PUBLIC_API_URL
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 interface Event {
   id: number
+  owner_github_id?: string | null
   event_type: string
+  repository_github_id?: string | null
   repository_name: string
   created_at?: string
 }
@@ -32,13 +35,25 @@ const TYPE_ICON: Record<string, string> = {
 }
 
 export default function ActivityFeed() {
+  const { data: session } = useSession()
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
+  const githubUserId = session?.user?.id
 
   useEffect(() => {
     async function load() {
+      if (!githubUserId) {
+        setEvents([])
+        setLoading(false)
+        return
+      }
+
       try {
-        const res = await fetch(`${API}/events?limit=20`)
+        const params = new URLSearchParams({
+          limit: "20",
+          owner_github_id: githubUserId,
+        })
+        const res = await fetch(`${API}/events?${params.toString()}`)
         if (res.ok) setEvents(await res.json())
       } finally {
         setLoading(false)
@@ -47,7 +62,7 @@ export default function ActivityFeed() {
     load()
     const t = setInterval(load, 15000)
     return () => clearInterval(t)
-  }, [])
+  }, [githubUserId])
 
   if (loading) {
     return (
