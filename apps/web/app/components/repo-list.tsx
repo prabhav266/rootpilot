@@ -130,7 +130,7 @@ export default function RepoList() {
     }
   }
 
-  const webhookUrl = `${API}/webhooks/github`
+  const webhookUrl = `${API.replace(/\/$/, "")}/webhooks/github/`
   const copyWebhook = () => {
     navigator.clipboard.writeText(webhookUrl)
     setCopied(true)

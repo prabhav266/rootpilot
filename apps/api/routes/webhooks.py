@@ -35,6 +35,7 @@ def verify_signature(payload_body: bytes, signature_header: str) -> bool:
     return hmac.compare_digest(expected_signature, signature_header)
 
 
+@router.post("")
 @router.post("/")
 async def github_webhook(request: Request):
     payload_body = await request.body()
