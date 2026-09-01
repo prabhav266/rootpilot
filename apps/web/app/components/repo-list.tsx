@@ -53,6 +53,9 @@ export default function RepoList() {
   const [webhookCheck, setWebhookCheck] = useState<"idle" | "ok" | "error">("idle")
   const [installingWebhook, setInstallingWebhook] = useState<Record<number, boolean>>({})
   const [installedWebhook, setInstalledWebhook] = useState<Record<number, string>>({})
+  const [autoSettingUpAll, setAutoSettingUpAll] = useState(false)
+  const [autoSetupProgress, setAutoSetupProgress] = useState<{ current: number; total: number } | null>(null)
+  const [showManualWebhook, setShowManualWebhook] = useState(false)
   const githubUserId = session?.user?.id
 
 
@@ -96,6 +99,39 @@ export default function RepoList() {
     loadRepos()
   }, [session?.accessToken, githubUserId, fetchConnected])
 
+  const autoInstallWebhook = async (repo: GithubRepo, silent = false) => {
+    if (!session?.accessToken) {
+      if (!silent) alert("GitHub access token is required. Please sign in with GitHub.")
+      return false
+    }
+
+    setInstallingWebhook(prev => ({ ...prev, [repo.id]: true }))
+    try {
+      const res = await fetch(`${API}/repositories/install-webhook`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repo_name: repo.full_name,
+          github_token: session.accessToken,
+          webhook_url: webhookUrl,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setInstalledWebhook(prev => ({ ...prev, [repo.id]: data.already_installed ? "✓ Active" : "✓ Installed" }))
+        return true
+      } else {
+        if (!silent) alert(data.detail || "Failed to install webhook.")
+        return false
+      }
+    } catch {
+      if (!silent) alert("Network error while installing webhook.")
+      return false
+    } finally {
+      setInstallingWebhook(prev => ({ ...prev, [repo.id]: false }))
+    }
+  }
+
   const connect = async (repo: GithubRepo) => {
     if (!githubUserId) return
 
@@ -113,11 +149,55 @@ export default function RepoList() {
         }),
       })
       if (res.ok) {
+        // Automatically provision webhook on GitHub via OAuth token
+        if (session?.accessToken) {
+          await autoInstallWebhook(repo, true)
+        }
         await fetchConnected()
       }
     } finally {
       setConnecting(null)
     }
+  }
+
+  const autoSetupAll = async () => {
+    if (!session?.accessToken || !githubUserId) {
+      alert("Please sign in with GitHub to auto-configure repositories.")
+      return
+    }
+
+    const unconnected = repos.filter(r => !isConnected(r))
+    const targets = unconnected.length > 0 ? unconnected : repos
+    if (targets.length === 0) return
+
+    setAutoSettingUpAll(true)
+    setAutoSetupProgress({ current: 0, total: targets.length })
+
+    for (let i = 0; i < targets.length; i++) {
+      const repo = targets[i]
+      setAutoSetupProgress({ current: i + 1, total: targets.length })
+
+      try {
+        await fetch(`${API}/repositories/connect`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            owner_github_id: githubUserId,
+            owner_login: session?.user?.login ?? session?.user?.name ?? null,
+            repo_name: repo.full_name,
+            github_repo_id: String(repo.id),
+            repo_url: repo.html_url,
+          }),
+        })
+        await autoInstallWebhook(repo, true)
+      } catch (e) {
+        console.warn("Auto-setup error for", repo.full_name, e)
+      }
+    }
+
+    await fetchConnected()
+    setAutoSettingUpAll(false)
+    setAutoSetupProgress(null)
   }
 
   const disconnect = async (repo: GithubRepo) => {
@@ -153,36 +233,6 @@ export default function RepoList() {
       setWebhookCheck("error")
     } finally {
       setCheckingWebhook(false)
-    }
-  }
-
-  const autoInstallWebhook = async (repo: GithubRepo) => {
-    if (!session?.accessToken) {
-      alert("GitHub access token is required. Please sign in with GitHub.")
-      return
-    }
-
-    setInstallingWebhook(prev => ({ ...prev, [repo.id]: true }))
-    try {
-      const res = await fetch(`${API}/repositories/install-webhook`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repo_name: repo.full_name,
-          github_token: session.accessToken,
-          webhook_url: webhookUrl,
-        }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setInstalledWebhook(prev => ({ ...prev, [repo.id]: data.already_installed ? "✓ Active" : "✓ Installed" }))
-      } else {
-        alert(data.detail || "Failed to install webhook.")
-      }
-    } catch {
-      alert("Network error while installing webhook.")
-    } finally {
-      setInstallingWebhook(prev => ({ ...prev, [repo.id]: false }))
     }
   }
 
@@ -256,11 +306,12 @@ export default function RepoList() {
   return (
     <div className="fade-up" style={{ marginBottom: "40px" }}>
 
+      {/* Automated Webhook Management Banner */}
       <div className="card" style={{
         padding: "20px 24px",
         marginBottom: "28px",
-        background: "rgba(0,229,255,0.03)",
-        borderColor: "rgba(0,229,255,0.12)",
+        background: "linear-gradient(135deg, rgba(0,229,255,0.04) 0%, rgba(167,139,250,0.03) 100%)",
+        borderColor: "rgba(0,229,255,0.18)",
       }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "20px", flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: "280px" }}>
@@ -268,90 +319,121 @@ export default function RepoList() {
               <div style={{
                 width: "28px", height: "28px", borderRadius: "7px",
                 background: "var(--accent-dim)",
-                border: "1px solid rgba(0,229,255,0.15)",
+                border: "1px solid rgba(0,229,255,0.2)",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: "13px",
-              }}>🔗</div>
-              <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--accent)" }}>Webhook Endpoint</span>
-              <span className="badge badge-blue">Required</span>
+                fontSize: "14px",
+              }}>⚡</div>
+              <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)" }}>Automated Webhook Management</span>
+              <span className="badge badge-green">✓ OAuth Auto-Sync Active</span>
             </div>
 
             <p style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "12px", lineHeight: 1.6 }}>
-              Add this URL to your GitHub repo under{" "}
-              <code style={{ fontFamily: "var(--font-mono)", color: "var(--accent)", fontSize: "11px" }}>Settings → Webhooks</code>.
-              {" "}Select <em>Send me everything</em> for full event capture.
+              RootPilot automatically provisions and manages GitHub webhooks on your repositories via OAuth. When you connect a repository, events automatically stream to your dashboard without manual copy-pasting.
             </p>
 
-            <div style={{
-              display: "flex", alignItems: "center", gap: "0",
-              background: "var(--bg-inset)",
-              borderRadius: "var(--r-md)",
-              border: "1px solid var(--border)",
-              overflow: "hidden",
-              maxWidth: "520px",
-            }}>
-              <div style={{ padding: "9px 14px", borderRight: "1px solid var(--border)" }}>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--text-muted)", letterSpacing: "0.06em" }}>POST</span>
-              </div>
-              <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--green)", flex: 1, padding: "9px 12px", overflowX: "auto", whiteSpace: "nowrap" }}>
-                {webhookUrl}
-              </code>
+            {/* Quick Actions */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
               <button
-                onClick={copyWebhook}
-                style={{
-                  background: copied ? "rgba(0,255,136,0.1)" : "transparent",
-                  border: "none",
-                  borderLeft: "1px solid var(--border)",
-                  color: copied ? "var(--green)" : "var(--text-muted)",
-                  cursor: "pointer",
-                  padding: "9px 14px",
-                  fontSize: "11px",
-                  fontFamily: "var(--font-mono)",
-                  fontWeight: 600,
-                  transition: "all .2s",
-                  whiteSpace: "nowrap",
-                }}
+                onClick={autoSetupAll}
+                disabled={autoSettingUpAll || repos.length === 0}
+                className="btn btn-primary"
+                style={{ padding: "8px 16px", fontSize: "12px" }}
               >
-                {copied ? "✓ Copied" : "Copy"}
+                {autoSettingUpAll ? (
+                  <>
+                    <span className="spin" style={{
+                      width: "11px", height: "11px",
+                      border: "2px solid rgba(3,8,12,0.3)",
+                      borderTopColor: "#060709",
+                      borderRadius: "50%", display: "inline-block",
+                    }} />
+                    {autoSetupProgress ? `Setting up (${autoSetupProgress.current}/${autoSetupProgress.total})…` : "Configuring Repositories…"}
+                  </>
+                ) : (
+                  <>
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                      <path d="M8.5 1.5L2.5 9.5H8L7.5 14.5L13.5 6.5H8L8.5 1.5Z" fill="currentColor" />
+                    </svg>
+                    Auto-Setup All Repositories ({repos.length})
+                  </>
+                )}
               </button>
+
               <button
-                onClick={checkWebhook}
-                disabled={checkingWebhook}
-                style={{
-                  background: webhookCheck === "ok" ? "rgba(0,255,136,0.1)" : "transparent",
-                  border: "none",
-                  borderLeft: "1px solid var(--border)",
-                  color: webhookCheck === "ok" ? "var(--green)" : webhookCheck === "error" ? "var(--red)" : "var(--text-muted)",
-                  cursor: checkingWebhook ? "wait" : "pointer",
-                  padding: "9px 14px",
-                  fontSize: "11px",
-                  fontFamily: "var(--font-mono)",
-                  fontWeight: 600,
-                  transition: "all .2s",
-                  whiteSpace: "nowrap",
-                }}
+                onClick={() => setShowManualWebhook(prev => !prev)}
+                className="btn btn-ghost"
+                style={{ padding: "8px 14px", fontSize: "11px", color: "var(--text-muted)" }}
               >
-                {checkingWebhook ? "Checking" : webhookCheck === "ok" ? "Online" : webhookCheck === "error" ? "Retry" : "Check"}
+                {showManualWebhook ? "Hide Manual Endpoint ▲" : "Manual Webhook Configuration ▾"}
               </button>
             </div>
-            <p style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "10px",
-              color: webhookCheck === "error" ? "var(--red)" : webhookCheck === "ok" ? "var(--green)" : "var(--text-dim)",
-              marginTop: "8px",
-            }}>
-              {webhookCheck === "ok"
-                ? "Endpoint is reachable. GitHub deliveries should use POST."
-                : webhookCheck === "error"
-                  ? "Endpoint check failed. Confirm the API URL and deployment are live."
-                  : "Use Check for a quick browser-safe endpoint test."}
-            </p>
+
+            {/* Collapsible Manual Fallback */}
+            {showManualWebhook && (
+              <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid var(--border-light)" }}>
+                <p style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "8px" }}>
+                  If setting up webhooks on an external or self-hosted repository manually, use this payload URL:
+                </p>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "0",
+                  background: "var(--bg-inset)",
+                  borderRadius: "var(--r-md)",
+                  border: "1px solid var(--border)",
+                  overflow: "hidden",
+                  maxWidth: "540px",
+                }}>
+                  <div style={{ padding: "9px 14px", borderRight: "1px solid var(--border)" }}>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--text-muted)", letterSpacing: "0.06em" }}>POST</span>
+                  </div>
+                  <code style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--green)", flex: 1, padding: "9px 12px", overflowX: "auto", whiteSpace: "nowrap" }}>
+                    {webhookUrl}
+                  </code>
+                  <button
+                    onClick={copyWebhook}
+                    style={{
+                      background: copied ? "rgba(0,255,136,0.1)" : "transparent",
+                      border: "none",
+                      borderLeft: "1px solid var(--border)",
+                      color: copied ? "var(--green)" : "var(--text-muted)",
+                      cursor: "pointer",
+                      padding: "9px 14px",
+                      fontSize: "11px",
+                      fontFamily: "var(--font-mono)",
+                      fontWeight: 600,
+                      transition: "all .2s",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {copied ? "✓ Copied" : "Copy"}
+                  </button>
+                  <button
+                    onClick={checkWebhook}
+                    disabled={checkingWebhook}
+                    style={{
+                      background: webhookCheck === "ok" ? "rgba(0,255,136,0.1)" : "transparent",
+                      border: "none",
+                      borderLeft: "1px solid var(--border)",
+                      color: webhookCheck === "ok" ? "var(--green)" : webhookCheck === "error" ? "var(--red)" : "var(--text-muted)",
+                      cursor: checkingWebhook ? "wait" : "pointer",
+                      padding: "9px 14px",
+                      fontSize: "11px",
+                      fontFamily: "var(--font-mono)",
+                      fontWeight: 600,
+                      transition: "all .2s",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {checkingWebhook ? "Checking" : webhookCheck === "ok" ? "Online" : webhookCheck === "error" ? "Retry" : "Check"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* ── Repos header ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px", gap: "16px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px", gap: "16px", flexWrap: "wrap" }}>
         <div>
           <h2 style={{ fontSize: "17px", fontWeight: 800, marginBottom: "3px", letterSpacing: "-0.2px" }}>
             Repositories
@@ -481,16 +563,14 @@ export default function RepoList() {
                             borderTopColor: "#060709",
                             borderRadius: "50%", display: "inline-block",
                           }} />
-                          Connecting…
+                          Configuring…
                         </>
                       ) : (
                         <>
                           <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-                            <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.5"/>
-                            <line x1="6" y1="3" x2="6" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                            <line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            <path d="M6.5 1.5L2.5 6.5H6L5.5 10.5L9.5 5.5H6L6.5 1.5Z" fill="currentColor" />
                           </svg>
-                          Connect
+                          Connect & Auto-Setup
                         </>
                       )}
                     </button>
