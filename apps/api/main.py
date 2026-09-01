@@ -60,7 +60,8 @@ app.include_router(webhook_router, prefix="/webhooks/github")
 app.include_router(events_router)
 app.include_router(ai_router)
 app.include_router(ci_debug_router)
-# app.include_router(websocket_router)  # Enable when needed
+app.include_router(websocket_router)
+
 
 
 @app.get("/")

@@ -124,6 +124,24 @@ function formatLocalSummary(event: Event): string {
   return `${(event.event_type || "Event").replace(/_/g, " ")} in ${event.repository_name}`
 }
 
+function getDirectGitHubLink(event: Event): { url: string; label: string } | null {
+  try {
+    const payload = JSON.parse(event.payload || "{}")
+    if (event.event_type === "workflow_run" && payload.workflow_run?.html_url) {
+      return { url: payload.workflow_run.html_url, label: "View Run ↗" }
+    }
+    if (event.event_type === "pull_request" && payload.pull_request?.html_url) {
+      return { url: payload.pull_request.html_url, label: `PR #${payload.pull_request.number} ↗` }
+    }
+    if (event.event_type === "push" && (payload.compare || payload.head_commit?.url)) {
+      return { url: payload.compare || payload.head_commit.url, label: "Diff ↗" }
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+
 export default function EventList({ onEventsChange }: { onEventsChange?: (events: Event[]) => void }) {
   const { data: session } = useSession()
   const [events, setEvents] = useState<Event[]>([])
@@ -132,6 +150,9 @@ export default function EventList({ onEventsChange }: { onEventsChange?: (events
   const [diagnosing, setDiagnosing] = useState<number | null>(null)
   const [diagnoses, setDiagnoses] = useState<Record<number, Diagnosis>>({})
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null)
+  const [wsConnected, setWsConnected] = useState(false)
+  const [filterType, setFilterType] = useState<"all" | "failures" | "workflows" | "pushes" | "prs">("all")
+  const [repoFilter, setRepoFilter] = useState<string>("all")
   const githubUserId = session?.user?.id
 
   const fetchEvents = useCallback(async () => {
@@ -163,18 +184,74 @@ export default function EventList({ onEventsChange }: { onEventsChange?: (events
     }
   }, [githubUserId, onEventsChange])
 
+  // Polling fallback
   useEffect(() => {
     queueMicrotask(() => {
       void fetchEvents()
     })
     const interval = setInterval(() => {
       void fetchEvents()
-    }, 10000)
+    }, 15000)
     return () => clearInterval(interval)
   }, [fetchEvents])
 
+  // Real-time WebSocket connection
+  useEffect(() => {
+    if (!githubUserId) return
+
+    const wsProtocol = API.startsWith("https") ? "wss" : "ws"
+    const wsHost = API.replace(/^https?:\/\//, "").replace(/\/$/, "")
+    const wsUrl = `${wsProtocol}://${wsHost}/ws`
+
+    let socket: WebSocket | null = null
+    let reconnectTimer: NodeJS.Timeout
+
+    function connectWs() {
+      try {
+        socket = new WebSocket(wsUrl)
+        socket.onopen = () => {
+          setWsConnected(true)
+        }
+        socket.onmessage = (e) => {
+          try {
+            const newEv = JSON.parse(e.data)
+            if (newEv && newEv.id) {
+              const formatted: Event = {
+                ...newEv,
+                summary: newEv.summary || formatLocalSummary(newEv),
+              }
+              setEvents(prev => {
+                if (prev.some(x => x.id === formatted.id)) return prev
+                const updated = [formatted, ...prev]
+                onEventsChange?.(updated)
+                return updated
+              })
+            }
+          } catch {
+            // ignore
+          }
+        }
+        socket.onclose = () => {
+          setWsConnected(false)
+          reconnectTimer = setTimeout(connectWs, 5000)
+        }
+        socket.onerror = () => {
+          setWsConnected(false)
+        }
+      } catch {
+        setWsConnected(false)
+      }
+    }
+
+    connectWs()
+
+    return () => {
+      clearTimeout(reconnectTimer)
+      if (socket) socket.close()
+    }
+  }, [githubUserId, onEventsChange])
+
   const diagnose = async (event: Event) => {
-    // If we already have a diagnosis, just toggle visibility
     if (diagnoses[event.id]) {
       setExpandedId(expandedId === event.id ? null : event.id)
       return
@@ -184,12 +261,9 @@ export default function EventList({ onEventsChange }: { onEventsChange?: (events
     setExpandedId(event.id)
 
     try {
-      // Build the payload /ci/analyze expects
       const body: Record<string, string> = {
         jobs_url: event.jobs_url || "",
       }
-
-      // Pass the GitHub token if available so the backend can fetch job details
       if (session?.accessToken) {
         body.github_token = session.accessToken
       }
@@ -226,23 +300,65 @@ export default function EventList({ onEventsChange }: { onEventsChange?: (events
     setTimeout(() => setCopiedCmd(null), 2000)
   }
 
+  const repoNames = Array.from(new Set(events.map(e => e.repository_name).filter(Boolean)))
+
+  const filteredEvents = events.filter(e => {
+    if (repoFilter !== "all" && e.repository_name !== repoFilter) return false
+    const conclusion = getConclusion(e)
+    const isFailed = (e.event_type === "workflow_run" && conclusion === "failure")
+    if (filterType === "failures") return isFailed
+    if (filterType === "workflows") return e.event_type === "workflow_run" || e.event_type === "workflow_job"
+    if (filterType === "pushes") return e.event_type === "push"
+    if (filterType === "prs") return e.event_type === "pull_request"
+    return true
+  })
+
   return (
     <div>
       <AnalyticsDashboard events={events} />
 
       {/* ── Section header ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
         <div>
-          <h2 style={{ fontSize: "17px", fontWeight: 800, marginBottom: "3px", letterSpacing: "-0.2px" }}>
-            Live Feed
-          </h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "3px" }}>
+            <h2 style={{ fontSize: "17px", fontWeight: 800, letterSpacing: "-0.2px" }}>
+              Live Feed
+            </h2>
+            <span
+              className={`badge ${wsConnected ? "badge-green" : "badge-blue"}`}
+              style={{ fontSize: "10px", padding: "2px 8px" }}
+              title={wsConnected ? "Connected to WebSocket real-time event stream" : "Polling every 15 seconds"}
+            >
+              <span className={`status-dot ${wsConnected ? "dot-green pulse-dot" : "dot-blue"}`} style={{ width: "5px", height: "5px" }} />
+              {wsConnected ? "LIVE WS" : "POLLING"}
+            </span>
+          </div>
           <p style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-muted)" }}>
-            {events.length} events · polling every 10s
+            Showing {filteredEvents.length} of {events.length} events
           </p>
         </div>
 
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          {repoNames.length > 1 && (
+            <select
+              value={repoFilter}
+              onChange={e => setRepoFilter(e.target.value)}
+              className="input"
+              style={{
+                padding: "6px 12px",
+                fontSize: "12px",
+                borderRadius: "var(--r-sm)",
+                background: "var(--bg-card)",
+                color: "var(--text-primary)",
+              }}
+            >
+              <option value="all">All Repositories</option>
+              {repoNames.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          )}
 
-        <div style={{ display: "flex", gap: "8px" }}>
           <button onClick={fetchEvents} className="btn btn-ghost" style={{ padding: "7px 14px", fontSize: "12px" }}>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path d="M10 6A4 4 0 1 1 6 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -250,11 +366,51 @@ export default function EventList({ onEventsChange }: { onEventsChange?: (events
             </svg>
             Refresh
           </button>
-          <button onClick={clearEvents} className="btn btn-danger" style={{ padding: "7px 14px", fontSize: "12px" }}>
-            Clear All
-          </button>
+
+          {events.length > 0 && (
+            <button onClick={clearEvents} className="btn btn-danger" style={{ padding: "7px 14px", fontSize: "12px" }}>
+              Clear All
+            </button>
+          )}
         </div>
       </div>
+
+      {/* ── Filter Tabs ── */}
+      {events.length > 0 && (
+        <div style={{ display: "flex", gap: "6px", marginBottom: "16px", overflowX: "auto", paddingBottom: "4px" }}>
+          {[
+            { id: "all", label: "All Events", count: events.length },
+            { id: "failures", label: "🚨 Failures", count: events.filter(e => e.event_type === "workflow_run" && getConclusion(e) === "failure").length },
+            { id: "workflows", label: "🔄 Workflows", count: events.filter(e => e.event_type === "workflow_run" || e.event_type === "workflow_job").length },
+            { id: "pushes", label: "🚀 Pushes", count: events.filter(e => e.event_type === "push").length },
+            { id: "prs", label: "🔀 Pull Requests", count: events.filter(e => e.event_type === "pull_request").length },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setFilterType(tab.id as any)}
+              className="btn btn-ghost"
+              style={{
+                padding: "6px 12px",
+                fontSize: "12px",
+                borderRadius: "20px",
+                background: filterType === tab.id ? "rgba(0,229,255,0.12)" : "rgba(255,255,255,0.03)",
+                color: filterType === tab.id ? "var(--accent)" : "var(--text-secondary)",
+                borderColor: filterType === tab.id ? "rgba(0,229,255,0.3)" : "var(--border)",
+              }}
+            >
+              <span>{tab.label}</span>
+              <span style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "10px",
+                opacity: 0.7,
+                marginLeft: "4px",
+              }}>
+                ({tab.count})
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Loading skeletons */}
       {loading && (
@@ -275,25 +431,28 @@ export default function EventList({ onEventsChange }: { onEventsChange?: (events
       )}
 
       {/* Empty state */}
-      {!loading && events.length === 0 && (
+      {!loading && filteredEvents.length === 0 && (
         <div className="card" style={{ padding: "64px 24px", textAlign: "center" }}>
           <div style={{ fontSize: "40px", marginBottom: "16px", filter: "grayscale(0.3)" }}>📭</div>
           <p style={{ fontSize: "15px", fontWeight: 700, color: "var(--text-secondary)", marginBottom: "8px" }}>
-            No events yet
+            {events.length === 0 ? "No events yet" : "No events matching current filter"}
           </p>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "320px", margin: "0 auto", lineHeight: 1.7 }}>
-            Connect a repository and add the webhook URL to start receiving live events.
+            {events.length === 0
+              ? "Connect a repository and add the webhook URL to start receiving live events."
+              : "Try selecting a different filter tab or clearing the repository filter."}
           </p>
         </div>
       )}
 
       {/* Event list */}
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {events.map((event, idx) => {
+        {filteredEvents.map((event, idx) => {
           const conclusion = getConclusion(event)
           const isFailed   = event.event_type === "workflow_run" && conclusion === "failure"
           const diag       = diagnoses[event.id]
           const isExpanded = expandedId === event.id
+          const githubLink = getDirectGitHubLink(event)
 
           return (
             <div
@@ -342,6 +501,19 @@ export default function EventList({ onEventsChange }: { onEventsChange?: (events
 
                 {/* Action buttons */}
                 <div style={{ display: "flex", gap: "7px", flexShrink: 0, alignItems: "center" }}>
+                  {githubLink && (
+                    <a
+                      href={githubLink.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-ghost"
+                      style={{ padding: "6px 10px", fontSize: "11px", color: "var(--text-secondary)" }}
+                      title="Open on GitHub"
+                    >
+                      {githubLink.label}
+                    </a>
+                  )}
+
                   {isFailed && (
                     <button
                       onClick={() => diagnose(event)}
@@ -560,6 +732,7 @@ export default function EventList({ onEventsChange }: { onEventsChange?: (events
                   </pre>
                 </div>
               )}
+
 
               {/* Error state */}
               {diag?.error && isExpanded && (

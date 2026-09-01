@@ -1,32 +1,32 @@
 from fastapi import WebSocket
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections = []
-    
-    async def connect(
-        self,
-        websocket: WebSocket
-    ):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
         await websocket.accept()
-        
-        self.active_connections.append(
-            websocket
-        )
-    def disconnect(
-        self,
-        websocket: WebSocket
-    ):
-        self.active_connections.remove(
-            websocket
-        )
-        
-    async def broadcast(
-        self,
-        message: str
-    ):
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: str):
+        disconnected = []
         for connection in self.active_connections:
-            await connection.send_text(
-                message
-            )
-manager = ConnectionManager()
+            try:
+                await connection.send_text(message)
+            except Exception as e:
+                logger.debug(f"Failed to send to websocket client: {e}")
+                disconnected.append(connection)
+
+        for connection in disconnected:
+            self.disconnect(connection)
+
+
+manager = ConnectionManager()

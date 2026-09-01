@@ -51,7 +51,10 @@ export default function RepoList() {
   const [copied, setCopied] = useState(false)
   const [checkingWebhook, setCheckingWebhook] = useState(false)
   const [webhookCheck, setWebhookCheck] = useState<"idle" | "ok" | "error">("idle")
+  const [installingWebhook, setInstallingWebhook] = useState<Record<number, boolean>>({})
+  const [installedWebhook, setInstalledWebhook] = useState<Record<number, string>>({})
   const githubUserId = session?.user?.id
+
 
   // Fetch repos already registered in our backend
   const fetchConnected = useCallback(async () => {
@@ -153,6 +156,36 @@ export default function RepoList() {
     }
   }
 
+  const autoInstallWebhook = async (repo: GithubRepo) => {
+    if (!session?.accessToken) {
+      alert("GitHub access token is required. Please sign in with GitHub.")
+      return
+    }
+
+    setInstallingWebhook(prev => ({ ...prev, [repo.id]: true }))
+    try {
+      const res = await fetch(`${API}/repositories/install-webhook`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repo_name: repo.full_name,
+          github_token: session.accessToken,
+          webhook_url: webhookUrl,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setInstalledWebhook(prev => ({ ...prev, [repo.id]: data.already_installed ? "✓ Active" : "✓ Installed" }))
+      } else {
+        alert(data.detail || "Failed to install webhook.")
+      }
+    } catch {
+      alert("Network error while installing webhook.")
+    } finally {
+      setInstallingWebhook(prev => ({ ...prev, [repo.id]: false }))
+    }
+  }
+
   const isConnected = (repo: GithubRepo) =>
     connected.some(c => c.github_repo_id === String(repo.id))
 
@@ -223,7 +256,6 @@ export default function RepoList() {
   return (
     <div className="fade-up" style={{ marginBottom: "40px" }}>
 
-      {/* ── Webhook card ── */}
       <div className="card" style={{
         padding: "20px 24px",
         marginBottom: "28px",
@@ -463,24 +495,53 @@ export default function RepoList() {
                       )}
                     </button>
                   ) : (
-                    <button
-                      onClick={() => disconnect(repo)}
-                      disabled={isBusy}
-                      className="btn btn-danger"
-                      style={{ padding: "7px 14px", fontSize: "12px", flex: 1, justifyContent: "center" }}
-                    >
-                      {isBusy ? (
-                        <>
+                    <>
+                      <button
+                        onClick={() => disconnect(repo)}
+                        disabled={isBusy}
+                        className="btn btn-danger"
+                        style={{ padding: "7px 14px", fontSize: "12px", flex: 1, justifyContent: "center" }}
+                      >
+                        {isBusy ? (
+                          <>
+                            <span className="spin" style={{
+                              width: "11px", height: "11px",
+                              border: "2px solid rgba(255,61,87,0.25)",
+                              borderTopColor: "var(--red)",
+                              borderRadius: "50%", display: "inline-block",
+                            }} />
+                            Disconnecting…
+                          </>
+                        ) : "Disconnect"}
+                      </button>
+
+                      <button
+                        onClick={() => autoInstallWebhook(repo)}
+                        disabled={installingWebhook[repo.id]}
+                        className="btn btn-ghost"
+                        style={{
+                          padding: "7px 12px",
+                          fontSize: "12px",
+                          color: installedWebhook[repo.id] ? "var(--green)" : "var(--accent)",
+                          borderColor: installedWebhook[repo.id] ? "rgba(0,230,138,0.25)" : "rgba(0,229,255,0.2)",
+                          background: installedWebhook[repo.id] ? "var(--green-dim)" : "var(--accent-dim)",
+                        }}
+                        title="Automatically create GitHub webhook via GitHub API"
+                      >
+                        {installingWebhook[repo.id] ? (
                           <span className="spin" style={{
-                            width: "11px", height: "11px",
-                            border: "2px solid rgba(255,61,87,0.25)",
-                            borderTopColor: "var(--red)",
+                            width: "10px", height: "10px",
+                            border: "1.5px solid var(--accent-dim)",
+                            borderTopColor: "var(--accent)",
                             borderRadius: "50%", display: "inline-block",
                           }} />
-                          Disconnecting…
-                        </>
-                      ) : "Disconnect"}
-                    </button>
+                        ) : installedWebhook[repo.id] ? (
+                          installedWebhook[repo.id]
+                        ) : (
+                          "⚡ Auto Setup"
+                        )}
+                      </button>
+                    </>
                   )}
                   <a
                     href={repo.html_url}
@@ -510,6 +571,7 @@ export default function RepoList() {
       )}
 
       {/* No repos at all */}
+
       {!loading && repos.length === 0 && (
         <div className="card" style={{ padding: "48px 24px", textAlign: "center" }}>
           <div style={{ fontSize: "36px", marginBottom: "14px" }}>📦</div>
