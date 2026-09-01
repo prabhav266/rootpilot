@@ -65,6 +65,9 @@ def ensure_event_schema(engine):
         if "repository_github_id" not in columns:
             _add_column(connection, "events", "repository_github_id", "VARCHAR")
 
+        if "summary" not in columns:
+            _add_column(connection, "events", "summary", "TEXT")
+
 
 def ensure_schema(engine):
     ensure_repository_schema(engine)

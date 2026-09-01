@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from google import genai
 import os
 import json
@@ -9,127 +9,156 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 client = None
 if GEMINI_API_KEY:
-    client = genai.Client(api_key=GEMINI_API_KEY)
-
-
-def _require_client():
-    if client is None:
-        raise HTTPException(
-            status_code=503,
-            detail="AI service unavailable: GEMINI_API_KEY not configured",
-        )
-
-
-@router.post("/ai/summarize")
-async def summarize_event(event: dict):
-    event_type = event.get("event_type")
-    repository_name = event.get("repository_name", "unknown")
-
     try:
-        payload = json.loads(event.get("payload", "{}"))
-    except (json.JSONDecodeError, TypeError):
+        client = genai.Client(api_key=GEMINI_API_KEY)
+    except Exception:
+        client = None
+
+
+def generate_event_summary(
+    event_type: str, repository_name: str, payload_data: dict | str
+) -> str:
+    """Generate a clean summary for a GitHub webhook event.
+
+    Uses deterministic parsing for known event types and falls back to Gemini or smart template.
+    """
+    if isinstance(payload_data, str):
+        try:
+            payload = json.loads(payload_data)
+        except (json.JSONDecodeError, TypeError):
+            payload = {}
+    elif isinstance(payload_data, dict):
+        payload = payload_data
+    else:
         payload = {}
+
+    repo = repository_name or "unknown repository"
 
     try:
         if event_type == "workflow_run":
             workflow_run = payload.get("workflow_run", {})
-            workflow_name = workflow_run.get("name", "Unknown Workflow")
+            workflow_name = workflow_run.get("name", "CI Workflow")
             conclusion = workflow_run.get("conclusion")
+            status = workflow_run.get("status", "completed")
 
             if conclusion == "success":
-                summary = (
-                    f"CI workflow '{workflow_name}' completed successfully "
-                    f"in {repository_name}."
-                )
+                return f"CI workflow '{workflow_name}' completed successfully in {repo}."
             elif conclusion == "failure":
-                summary = (
-                    f"CI workflow '{workflow_name}' failed in {repository_name}. "
-                    f"Possible issue detected in pipeline execution."
-                )
+                return f"CI workflow '{workflow_name}' failed in {repo}. Review logs for details."
+            elif conclusion:
+                return f"CI workflow '{workflow_name}' finished with status '{conclusion}' in {repo}."
             else:
-                summary = (
-                    f"CI workflow '{workflow_name}' ran in {repository_name} "
-                    f"(status: {conclusion or 'pending'})."
-                )
+                return f"CI workflow '{workflow_name}' is currently {status} in {repo}."
 
         elif event_type == "push":
             commits = payload.get("commits", [])
             branch = payload.get("ref", "").replace("refs/heads/", "")
-            count = len(commits)
-            summary = (
-                f"{count} commit(s) pushed to {branch} in {repository_name}."
+            pusher = (
+                payload.get("pusher", {}).get("name")
+                or payload.get("sender", {}).get("login")
+                or "developer"
             )
+            count = len(commits)
+            branch_str = f" to {branch}" if branch else ""
+            if count == 1:
+                commit_msg = commits[0].get("message", "").split("\n")[0][:60]
+                return f"{pusher} pushed 1 commit{branch_str} in {repo}: \"{commit_msg}\""
+            elif count > 1:
+                return f"{pusher} pushed {count} commits{branch_str} in {repo}."
+            return f"Push event received{branch_str} in {repo}."
 
         elif event_type == "ping":
-            summary = f"Webhook connected successfully to {repository_name}."
+            return f"Webhook connected successfully to {repo}."
+
+        elif event_type == "pull_request":
+            pr = payload.get("pull_request", {})
+            action = payload.get("action", "updated")
+            pr_title = pr.get("title", "")
+            pr_num = pr.get("number", "")
+            pr_info = f"#{pr_num} '{pr_title}'" if pr_num else pr_title
+            return f"Pull Request {pr_info} was {action} in {repo}."
 
         elif event_type == "workflow_job":
             job = payload.get("workflow_job", {})
             job_name = job.get("name", "Unknown Job")
-            status = job.get("conclusion") or job.get("status", "unknown")
-            summary = (
-                f"CI/CD job '{job_name}' {status} in {repository_name}."
+            status = (
+                job.get("conclusion")
+                or job.get("status", "updated")
             )
+            return f"CI/CD job '{job_name}' {status} in {repo}."
 
         elif event_type == "check_run":
             check = payload.get("check_run", {})
             check_name = check.get("name", "Unknown Check")
             status = check.get("conclusion") or "in progress"
-            summary = (
-                f"Check '{check_name}' {status} in {repository_name}."
-            )
+            return f"Check '{check_name}' {status} in {repo}."
 
         elif event_type == "check_suite":
             suite = payload.get("check_suite", {})
             status = suite.get("conclusion") or "in progress"
-            summary = (
-                f"CI validation suite {status} in {repository_name}."
-            )
+            return f"CI validation suite {status} in {repo}."
 
-        else:
-            # Use Gemini for unknown event types
-            _require_client()
+        elif event_type == "issues":
+            action = payload.get("action", "updated")
+            issue = payload.get("issue", {})
+            title = issue.get("title", "")
+            return f"Issue '{title}' was {action} in {repo}."
+
+        elif event_type == "release":
+            action = payload.get("action", "published")
+            release = payload.get("release", {})
+            tag = release.get("tag_name", "new release")
+            return f"Release {tag} was {action} in {repo}."
+
+        # Fallback to Gemini if configured, otherwise fallback to template
+        if client:
             prompt = f"""You are an AI DevOps assistant.
-Analyze this GitHub event and explain in 2-3 sentences:
-- what happened
-- whether the workflow succeeded or failed (if applicable)
-- possible reason for failure (if applicable)
-
+Analyze this GitHub event and explain in 1-2 concise sentences:
 GitHub Event Type: {event_type}
-Repository: {repository_name}
-Payload: {json.dumps(payload, indent=2)[:2000]}
+Repository: {repo}
+Payload: {json.dumps(payload, indent=2)[:1500]}
 """
             response = client.models.generate_content(
                 model="gemini-2.5-flash-lite",
                 contents=prompt,
             )
-            summary = response.text.strip()
+            if response.text:
+                return response.text.strip()
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        summary = f"AI analysis failed: {str(e)}"
+    except Exception:
+        pass
 
+    formatted_type = (event_type or "GitHub").replace("_", " ").title()
+    return f"{formatted_type} event recorded in {repo}."
+
+
+@router.post("/ai/summarize")
+async def summarize_event(event: dict):
+    event_type = event.get("event_type", "unknown")
+    repository_name = event.get("repository_name", "unknown")
+    payload = event.get("payload", {})
+    summary = generate_event_summary(event_type, repository_name, payload)
     return {"summary": summary}
 
 
 @router.post("/ai/insights")
 async def generate_insights(events: list[dict]):
-    _require_client()
-
     total_events = len(events)
     push_events = sum(1 for e in events if e.get("event_type") == "push")
     workflow_events = sum(
         1 for e in events if e.get("event_type") == "workflow_run"
     )
-    failed_workflows = sum(
-        1
-        for e in events
-        if e.get("event_type") == "workflow_run"
-        and isinstance(e.get("payload"), str)
-        and '"conclusion": "failure"' in e.get("payload", "")
-    )
-    repo_names = [e.get("repository_name") for e in events]
+
+    failed_workflows = 0
+    for e in events:
+        if e.get("event_type") == "workflow_run":
+            p = e.get("payload")
+            if isinstance(p, str) and '"conclusion": "failure"' in p:
+                failed_workflows += 1
+            elif isinstance(p, dict) and p.get("workflow_run", {}).get("conclusion") == "failure":
+                failed_workflows += 1
+
+    repo_names = [e.get("repository_name") for e in events if e.get("repository_name")]
     unique_repos = len(set(repo_names))
 
     risk = "Low"
@@ -141,21 +170,22 @@ async def generate_insights(events: list[dict]):
     health = "Healthy"
     if total_events < 3:
         health = "Inactive"
-    elif workflow_events > push_events:
-        health = "CI Heavy"
     elif failed_workflows > 0:
         health = "Degraded"
+    elif workflow_events > push_events:
+        health = "CI Heavy"
 
     anomalies = []
     if push_events > 15:
         anomalies.append("Unusual push activity spike detected")
     if workflow_events > 20:
         anomalies.append("High workflow execution volume detected")
-    if failed_workflows > 5:
-        anomalies.append("Elevated CI failure rate detected")
+    if failed_workflows > 0:
+        anomalies.append(f"Elevated CI failure rate ({failed_workflows} failed run{'s' if failed_workflows > 1 else ''})")
 
-    prompt = f"""You are an AI DevOps observability assistant.
-
+    insight = ""
+    if client and total_events > 0:
+        prompt = f"""You are an AI DevOps observability assistant.
 Analyze this GitHub repository activity data and generate a concise operational intelligence summary.
 
 Metrics:
@@ -171,21 +201,30 @@ Detected anomalies:
 {anomalies if anomalies else "None"}
 
 Requirements:
-- Keep response under 80 words
-- Sound professional and operational
-- Mention engineering activity patterns
-- Mention CI/CD behavior if relevant
-- Mention anomalies if present
+- Keep response under 60 words
+- Professional and operational DevOps tone
+- Highlight CI/CD stability or failures if present
 """
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash-lite",
+                contents=prompt,
+            )
+            if response.text:
+                insight = response.text.strip()
+        except Exception:
+            insight = ""
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
-            contents=prompt,
-        )
-        insight = response.text.strip()
-    except Exception as e:
-        insight = f"Insight generation failed: {str(e)}"
+    # Smart deterministic fallback if Gemini key is absent, rate-limited, or failed
+    if not insight:
+        if total_events == 0:
+            insight = "No repository activity recorded yet. Connect a repository to monitor commits and automated CI/CD workflows."
+        elif failed_workflows > 0:
+            insight = f"Operational Alert: {failed_workflows} CI workflow failure(s) detected across {unique_repos} monitored repository. Immediate log inspection is recommended to resolve pipeline blockers."
+        elif health == "Healthy":
+            insight = f"All systems optimal. {total_events} events processed ({push_events} pushes, {workflow_events} workflow runs) across {unique_repos} active repository. Pipelines are running cleanly."
+        else:
+            insight = f"Repository ecosystem currently in {health} status with {total_events} recorded events across {unique_repos} repository. Risk level evaluated as {risk}."
 
     return {
         "health": health,
@@ -198,3 +237,4 @@ Requirements:
         "anomalies": anomalies,
         "insight": insight,
     }
+

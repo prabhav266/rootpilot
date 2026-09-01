@@ -20,33 +20,8 @@ interface Event {
 
 export default function Home() {
   const { data: session } = useSession()
-
   const [events, setEvents] = useState<Event[]>([])
-  const githubUserId = session?.user?.id
 
-  useEffect(() => {
-
-  async function fetchEvents() {
-    if (!githubUserId) {
-      setEvents([])
-      return
-    }
-
-    try {
-      const params = new URLSearchParams({ owner_github_id: githubUserId })
-      const res = await fetch(`${API}/events?${params.toString()}`)
-      if (!res.ok) return
-
-      const data = await res.json()
-      setEvents(data)
-    } catch (err) {
-      console.error("fetchEvents error:", err)
-    }
-  }
-
-  fetchEvents()
-
-}, [githubUserId])
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", position: "relative", overflow: "hidden" }}>
 
@@ -143,7 +118,7 @@ export default function Home() {
       }}>
         <AIInsights events={events} />
         <RepoList />
-        <EventList />
+        <EventList onEventsChange={setEvents} />
       </main>
     </div>
   )

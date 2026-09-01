@@ -49,6 +49,8 @@ export default function RepoList() {
   const [disconnecting, setDisconnecting] = useState<number | null>(null)
   const [search, setSearch] = useState("")
   const [copied, setCopied] = useState(false)
+  const [checkingWebhook, setCheckingWebhook] = useState(false)
+  const [webhookCheck, setWebhookCheck] = useState<"idle" | "ok" | "error">("idle")
   const githubUserId = session?.user?.id
 
   // Fetch repos already registered in our backend
@@ -135,6 +137,20 @@ export default function RepoList() {
     navigator.clipboard.writeText(webhookUrl)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const checkWebhook = async () => {
+    setCheckingWebhook(true)
+    setWebhookCheck("idle")
+
+    try {
+      const res = await fetch(webhookUrl)
+      setWebhookCheck(res.ok ? "ok" : "error")
+    } catch {
+      setWebhookCheck("error")
+    } finally {
+      setCheckingWebhook(false)
+    }
   }
 
   const isConnected = (repo: GithubRepo) =>
@@ -266,7 +282,38 @@ export default function RepoList() {
               >
                 {copied ? "✓ Copied" : "Copy"}
               </button>
+              <button
+                onClick={checkWebhook}
+                disabled={checkingWebhook}
+                style={{
+                  background: webhookCheck === "ok" ? "rgba(0,255,136,0.1)" : "transparent",
+                  border: "none",
+                  borderLeft: "1px solid var(--border)",
+                  color: webhookCheck === "ok" ? "var(--green)" : webhookCheck === "error" ? "var(--red)" : "var(--text-muted)",
+                  cursor: checkingWebhook ? "wait" : "pointer",
+                  padding: "9px 14px",
+                  fontSize: "11px",
+                  fontFamily: "var(--font-mono)",
+                  fontWeight: 600,
+                  transition: "all .2s",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {checkingWebhook ? "Checking" : webhookCheck === "ok" ? "Online" : webhookCheck === "error" ? "Retry" : "Check"}
+              </button>
             </div>
+            <p style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "10px",
+              color: webhookCheck === "error" ? "var(--red)" : webhookCheck === "ok" ? "var(--green)" : "var(--text-dim)",
+              marginTop: "8px",
+            }}>
+              {webhookCheck === "ok"
+                ? "Endpoint is reachable. GitHub deliveries should use POST."
+                : webhookCheck === "error"
+                  ? "Endpoint check failed. Confirm the API URL and deployment are live."
+                  : "Use Check for a quick browser-safe endpoint test."}
+            </p>
           </div>
         </div>
       </div>

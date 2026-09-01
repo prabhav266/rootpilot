@@ -25,12 +25,18 @@ interface BackendInsights {
 export default function AIInsights({ events }: { events: Event[] }) {
   const [backendInsights, setBackendInsights] = useState<BackendInsights | null>(null)
   const [loadingInsights, setLoadingInsights] = useState(false)
-  const prevLengthRef = useRef(-1)
+  const prevSignatureRef = useRef<string>("")
 
   useEffect(() => {
-    // Only re-fetch when the event count actually changes, not on every render
-    if (events.length === 0 || events.length === prevLengthRef.current) return
-    prevLengthRef.current = events.length
+    if (events.length === 0) {
+      setBackendInsights(null)
+      prevSignatureRef.current = ""
+      return
+    }
+
+    const currentSignature = `${events.length}-${events[0]?.id || 0}`
+    if (currentSignature === prevSignatureRef.current) return
+    prevSignatureRef.current = currentSignature
 
     async function fetchInsights() {
       setLoadingInsights(true)
@@ -45,7 +51,7 @@ export default function AIInsights({ events }: { events: Event[] }) {
           setBackendInsights(data)
         }
       } catch (err) {
-        console.error("AI insights error:", err)
+        console.warn("AI insights unavailable:", err)
       } finally {
         setLoadingInsights(false)
       }

@@ -12,4 +12,5 @@ class Event(Base):
     repository_name = Column(String)
     jobs_url = Column(String, nullable=True)
     payload = Column(Text)
+    summary = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -7,5 +7,6 @@ def serialize_event(event):
         "repository_name": event.repository_name,
         "jobs_url": event.jobs_url,
         "payload": event.payload,
+        "summary": getattr(event, "summary", None),
         "created_at": event.created_at.isoformat() if event.created_at else None,
     }

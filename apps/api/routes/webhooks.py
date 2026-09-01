@@ -10,6 +10,7 @@ from models.event import Event
 from models.repository import Repository
 from websocket_manager import manager
 from utils.serializers import serialize_event
+from routes.ai import generate_event_summary
 
 WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET")
 
@@ -33,6 +34,16 @@ def verify_signature(payload_body: bytes, signature_header: str) -> bool:
     expected_signature = "sha256=" + hash_object.hexdigest()
 
     return hmac.compare_digest(expected_signature, signature_header)
+
+
+@router.get("")
+@router.get("/")
+def webhook_status():
+    return {
+        "status": "ready",
+        "message": "RootPilot webhook endpoint is online. Configure GitHub to send POST requests here.",
+        "method": "POST",
+    }
 
 
 @router.post("")
@@ -71,6 +82,7 @@ async def github_webhook(request: Request):
         owners = connected_repos or [None]
         events = []
         payload_json = json.dumps(payload)
+        summary = generate_event_summary(event_type, repository_name, payload)
 
         for connected_repo in owners:
             event = Event(
@@ -82,6 +94,7 @@ async def github_webhook(request: Request):
                 repository_name=repository_name,
                 jobs_url=jobs_url,
                 payload=payload_json,
+                summary=summary,
             )
             db.add(event)
             events.append(event)

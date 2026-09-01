@@ -33,6 +33,7 @@ interface Diagnosis {
   error?: string
 }
 
+
 function timeAgo(iso: string | undefined) {
   if (!iso) return ""
   const diff = Date.now() - new Date(iso).getTime()
@@ -43,6 +44,7 @@ function timeAgo(iso: string | undefined) {
   if (h < 24) return `${h}h ago`
   return `${Math.floor(h / 24)}d ago`
 }
+
 
 function eventBadgeClass(type: string) {
   if (type === "workflow_run") return "badge badge-blue"
@@ -89,7 +91,40 @@ function EventIcon({ type, conclusion }: { type: string; conclusion: string | nu
   )
 }
 
-export default function EventList() {
+function formatLocalSummary(event: Event): string {
+  if (event.summary) return event.summary
+  try {
+    const payload = JSON.parse(event.payload || "{}")
+    if (event.event_type === "workflow_run") {
+      const run = payload.workflow_run
+      const name = run?.name || "CI Workflow"
+      const conclusion = run?.conclusion
+      return conclusion === "success"
+        ? `CI workflow '${name}' completed successfully in ${event.repository_name}.`
+        : conclusion === "failure"
+        ? `CI workflow '${name}' failed in ${event.repository_name}.`
+        : `CI workflow '${name}' ran in ${event.repository_name}.`
+    }
+    if (event.event_type === "push") {
+      const commits = payload.commits || []
+      const branch = (payload.ref || "").replace("refs/heads/", "")
+      const count = commits.length
+      return `${count} commit(s) pushed to ${branch || "main"} in ${event.repository_name}.`
+    }
+    if (event.event_type === "ping") {
+      return `Webhook connected successfully to ${event.repository_name}.`
+    }
+    if (event.event_type === "pull_request") {
+      const pr = payload.pull_request
+      return `Pull Request #${pr?.number || ""} ${payload.action || "updated"} in ${event.repository_name}.`
+    }
+  } catch {
+    // ignore
+  }
+  return `${(event.event_type || "Event").replace(/_/g, " ")} in ${event.repository_name}`
+}
+
+export default function EventList({ onEventsChange }: { onEventsChange?: (events: Event[]) => void }) {
   const { data: session } = useSession()
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
@@ -102,6 +137,7 @@ export default function EventList() {
   const fetchEvents = useCallback(async () => {
     if (!githubUserId) {
       setEvents([])
+      onEventsChange?.([])
       setLoading(false)
       return
     }
@@ -115,27 +151,17 @@ export default function EventList() {
       if (!res.ok) return
       const data: Event[] = await res.json()
 
-      // Fetch AI summaries for each event
-      const summarized = await Promise.all(
-        data.map(async (event) => {
-          try {
-            const aiRes = await fetch(`${API}/ai/summarize`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(event),
-            })
-            const aiData = await aiRes.json()
-            return { ...event, summary: aiData.summary }
-          } catch {
-            return event
-          }
-        })
-      )
-      setEvents(summarized)
+      const formatted: Event[] = data.map((event) => ({
+        ...event,
+        summary: event.summary || formatLocalSummary(event),
+      }))
+
+      setEvents(formatted)
+      onEventsChange?.(formatted)
     } finally {
       setLoading(false)
     }
-  }, [githubUserId])
+  }, [githubUserId, onEventsChange])
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -182,6 +208,7 @@ export default function EventList() {
     }
   }
 
+
   const clearEvents = async () => {
     if (!githubUserId) return
 
@@ -189,6 +216,7 @@ export default function EventList() {
     const params = new URLSearchParams({ owner_github_id: githubUserId })
     await fetch(`${API}/events?${params.toString()}`, { method: "DELETE" })
     setEvents([])
+    onEventsChange?.([])
     setDiagnoses({})
   }
 
@@ -212,6 +240,7 @@ export default function EventList() {
             {events.length} events · polling every 10s
           </p>
         </div>
+
 
         <div style={{ display: "flex", gap: "8px" }}>
           <button onClick={fetchEvents} className="btn btn-ghost" style={{ padding: "7px 14px", fontSize: "12px" }}>

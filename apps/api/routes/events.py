@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models.event import Event
 from utils.serializers import serialize_event
+from routes.ai import generate_event_summary
 
 router = APIRouter()
 
@@ -29,7 +30,14 @@ def get_events(
             query = query.filter(Event.owner_github_id == owner_github_id)
 
         events = query.limit(limit).all()
-        return [serialize_event(e) for e in events]
+        result = []
+        for e in events:
+            if not getattr(e, "summary", None):
+                e.summary = generate_event_summary(
+                    e.event_type, e.repository_name, e.payload
+                )
+            result.append(serialize_event(e))
+        return result
 
     finally:
         db.close()
